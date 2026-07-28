@@ -1,0 +1,1088 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>방폭계산서 작성도구 · KOSHA GUIDE E-180-2020</title>
+<style>
+:root{
+  --ink:#131b24; --ink-2:#41505f; --ink-3:#75838f;
+  --field:#ffffff; --panel:#f4f6f8; --deck:#dfe4e9; --rule:#c6cfd7; --rule-2:#e4e9ee;
+  --blue:#14508c; --blue-soft:#e7eef6;
+  --mark:#f5761a; --mark-soft:#fdecdd;
+  --red:#c0392b; --green:#2f7d32;
+  --z0:#d84315; --z1:#ef8b1e; --z2:#f2cf3c;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --ui:"Pretendard","Malgun Gothic","맑은 고딕",-apple-system,"Segoe UI",sans-serif;
+  --doc:"Malgun Gothic","맑은 고딕","Apple SD Gothic Neo",sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{font-family:var(--ui);color:var(--ink);background:var(--deck);font-size:13px;line-height:1.5}
+button,input,select,textarea{font-family:inherit;font-size:inherit;color:inherit}
+
+/* ---------- app shell ---------- */
+.app{display:flex;flex-direction:column;height:100vh}
+.bar{display:flex;align-items:center;gap:14px;padding:0 16px;height:52px;background:var(--ink);color:#fff;flex:0 0 auto}
+.bar h1{margin:0;font-size:14px;font-weight:700;letter-spacing:-.01em}
+.bar .std{font-family:var(--mono);font-size:10.5px;color:#9fb2c4;letter-spacing:.02em}
+.bar .sp{flex:1}
+.bar button{background:#2b3a49;border:1px solid #3d4f61;color:#e8eef4;padding:6px 12px;border-radius:5px;cursor:pointer}
+.bar button:hover{background:#3b4d5f}
+.bar button.go{background:var(--mark);border-color:var(--mark);color:#241000;font-weight:700}
+.bar button.go:hover{background:#ff8b34}
+
+.work{flex:1;display:grid;grid-template-columns:minmax(400px,470px) 1fr;overflow:hidden}
+.side{background:var(--panel);border-right:1px solid var(--rule);overflow-y:auto;padding:0 0 60px}
+.stage{overflow-y:auto;padding:22px 0 60px;background:var(--deck)}
+
+/* ---------- side panel ---------- */
+.tabs{display:flex;position:sticky;top:0;z-index:5;background:var(--panel);border-bottom:1px solid var(--rule)}
+.tabs button{flex:1;padding:11px 4px;background:none;border:0;border-bottom:2px solid transparent;cursor:pointer;color:var(--ink-2);font-weight:600}
+.tabs button.on{color:var(--blue);border-bottom-color:var(--blue);background:#fff}
+.tabpane{display:none;padding:14px}
+.tabpane.on{display:block}
+
+fieldset{border:1px solid var(--rule);border-radius:7px;margin:0 0 14px;padding:10px 12px 12px;background:#fff}
+legend{font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--blue);padding:0 6px;text-transform:uppercase}
+.row{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.row.r3{grid-template-columns:repeat(3,1fr)}
+.row.r1{grid-template-columns:1fr}
+label.f{display:block;margin-bottom:8px}
+label.f>span{display:block;font-size:11px;color:var(--ink-2);margin-bottom:3px;font-weight:600}
+label.f>span em{font-style:normal;color:var(--ink-3);font-weight:400}
+input[type=text],input[type=number],select,textarea{width:100%;padding:6px 8px;border:1px solid var(--rule);border-radius:5px;background:var(--field)}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--blue);outline-offset:-1px;border-color:var(--blue)}
+input[type=number]{font-family:var(--mono)}
+textarea{resize:vertical;min-height:52px}
+.hint{font-size:11px;color:var(--ink-3);margin:2px 0 8px}
+
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.chip{padding:5px 10px;border:1px solid var(--rule);background:#fff;border-radius:20px;cursor:pointer;font-size:12px}
+.chip.on{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}
+.chip.add{border-style:dashed;color:var(--blue);font-weight:700}
+.mini{padding:4px 9px;font-size:11.5px;border:1px solid var(--rule);background:#fff;border-radius:5px;cursor:pointer}
+.mini:hover{background:var(--blue-soft);border-color:var(--blue)}
+.mini.danger{color:var(--red);border-color:#e3b3ae}
+.mini.danger:hover{background:#fbeceb}
+
+/* pick tables */
+table.pick{width:100%;border-collapse:collapse;font-size:11px;margin:2px 0 4px}
+table.pick th,table.pick td{border:1px solid var(--rule);padding:4px 5px;text-align:center;vertical-align:middle}
+table.pick th{background:var(--blue-soft);font-weight:700;font-size:10.5px;color:#0e3a67}
+table.pick td.lab{text-align:left;background:#fafbfc;font-weight:600}
+table.pick td.hit{cursor:pointer;font-family:var(--mono)}
+table.pick td.hit:hover{background:var(--mark-soft)}
+table.pick td.on{background:var(--mark);color:#241000;font-weight:700}
+table.pick tr.on td{background:var(--mark-soft)}
+table.pick tr.on td.lab{box-shadow:inset 3px 0 0 var(--mark)}
+.deftbl td{text-align:left!important;font-size:10.5px;line-height:1.45}
+
+.readout{border:1px solid var(--rule);border-radius:7px;background:#fff;padding:10px 12px;margin-bottom:14px}
+.readout h4{margin:0 0 8px;font-size:11px;letter-spacing:.04em;color:var(--blue);text-transform:uppercase}
+.readout dl{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;margin:0;font-size:12px}
+.readout dt{color:var(--ink-2)}
+.readout dd{margin:0;font-family:var(--mono);text-align:right}
+.readout dd b{font-family:var(--ui)}
+.tag{display:inline-block;padding:1px 7px;border-radius:4px;font-weight:700;font-size:11px}
+.tag.z0{background:var(--z0);color:#fff}.tag.z1{background:var(--z1);color:#231400}
+.tag.z2{background:var(--z2);color:#241f00}.tag.zn{background:#5d6b78;color:#fff}
+.warn{border-left:3px solid var(--mark);background:#fff8f1;padding:7px 10px;font-size:11.5px;margin:8px 0;border-radius:0 5px 5px 0}
+.err{border-left:3px solid var(--red);background:#fdf0ef;padding:7px 10px;font-size:11.5px;margin:8px 0;border-radius:0 5px 5px 0}
+
+/* ---------- report ---------- */
+#report{width:210mm;margin:0 auto}
+.page{width:210mm;min-height:297mm;background:#fff;padding:18mm 15mm 14mm;margin:0 auto 14px;box-shadow:0 2px 14px rgba(20,30,40,.18);font-family:var(--doc);color:#000;font-size:10.5pt;line-height:1.6;position:relative}
+.page .pno{position:absolute;bottom:8mm;right:15mm;font-size:8.5pt;color:#555;font-family:var(--mono)}
+.cover{display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;min-height:261mm}
+.cover .en{font-size:26pt;font-weight:700;line-height:1.35;letter-spacing:-.01em}
+.cover .dt{margin-top:26mm;font-size:14pt}
+.cover .co{margin-top:34mm;font-size:16pt;font-weight:700}
+.cover .rule{width:52mm;border-top:2px solid #000;margin:10mm 0}
+h2.sec{font-size:12pt;font-weight:700;margin:0 0 8px}
+h3.sub{font-size:11pt;font-weight:700;margin:14px 0 6px}
+h4.eq{font-size:10.5pt;font-weight:700;margin:12px 0 4px}
+h4.eq::before{content:"∎ ";}
+.page p{margin:3px 0}
+.ind{padding-left:14px}.ind2{padding-left:28px}.ind3{padding-left:42px}
+.blue{color:#1546a0}.orange{color:#e2620d;font-weight:700}.uline{text-decoration:underline}
+.item{margin:10px 0 4px;font-weight:700}
+.itemhd{color:#1546a0}
+figure{margin:8px 0 10px;text-align:center}
+figcaption{font-size:9.5pt;margin-bottom:4px;font-weight:700}
+svg.chart{width:135mm;height:auto;border:1px solid #999;background:#fff}
+svg.zone{width:150mm;height:auto}
+
+/* document tables */
+table.doc{width:100%;border-collapse:collapse;font-size:9pt;margin:6px 0}
+table.doc th,table.doc td{border:1px solid #333;padding:3px 4px;text-align:center;vertical-align:middle}
+table.doc th{background:#dbe5f1;font-weight:700}
+table.doc td.l{text-align:left}
+table.doc .note{font-size:8pt;text-align:left;line-height:1.35}
+table.doc.tiny{font-size:7.3pt}
+table.doc.tiny th,table.doc.tiny td{padding:2px}
+table.spec{width:100%;border-collapse:collapse;font-size:9.5pt;margin:6px 0}
+table.spec th,table.spec td{border:1px solid #333;padding:4px 6px;text-align:center}
+table.spec th{background:#d9e2f3;font-weight:700;font-size:10.5pt}
+table.spec td.k{background:#fff;font-weight:600}
+.hl{background:#fff2cc}
+.cellhit{background:var(--mark)!important;color:#241000;font-weight:700;box-shadow:inset 0 0 0 2px #a33f00}
+.rowhit{background:#fde3c8!important}
+.colhit{background:#fdeedd!important}
+
+/* formula */
+.fm{font-family:"Cambria Math","Times New Roman",serif;font-size:12pt;margin:6px 0 6px 10px}
+.fm i,.v{font-style:italic;font-family:"Cambria Math","Times New Roman",serif}
+.frac{display:inline-block;vertical-align:middle;text-align:center;margin:0 3px}
+.frac>span{display:block;padding:0 4px}
+.frac .den{border-top:1.2px solid #000}
+.sqrt{border-top:1.2px solid #000;padding:0 3px 0 2px;margin-left:-2px}
+.deflist{font-size:9.5pt;margin:4px 0 8px 22px;line-height:1.7}
+.deflist b{font-style:italic;font-family:"Cambria Math",serif;font-weight:400;display:inline-block;min-width:26px}
+.calc{font-family:var(--mono);font-size:9.5pt;margin:4px 0 4px 16px;line-height:1.9}
+.calc .res{color:#c0392b;font-weight:700}
+.arrow{margin-left:4px}
+.sumbox{display:grid;grid-template-columns:1fr 1.6fr;gap:0;border:1px solid #333;font-size:9.5pt;margin-top:10px}
+.sumbox .lft{display:grid;grid-template-columns:1fr 1fr}
+.sumbox .lft div{border-bottom:1px solid #333;border-right:1px solid #333;padding:3px 5px;text-align:center}
+.sumbox .lft div:nth-child(2n){font-weight:700}
+.sumbox .lft div:nth-last-child(-n+2){border-bottom:0}
+.sumbox .rgt{padding:6px 8px;line-height:1.7}
+.smallnote{font-size:8.5pt;color:#333;margin-top:3px}
+
+@media print{
+  @page{size:A4;margin:0}
+  *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+  html,body{background:#fff;width:auto;height:auto;margin:0;padding:0}
+  .bar,.side,.tabs{display:none!important}
+  .app{display:block;height:auto}
+  .work{display:block;overflow:visible;height:auto}
+  .stage{overflow:visible;padding:0;background:#fff}
+  #report{width:auto;margin:0}
+  /* 폭·높이를 고정하지 않는다. 브라우저 여백 설정이 무엇이든 인쇄영역에 맞춰 흐른다 */
+  .page{width:auto;max-width:100%;min-height:0;height:auto;margin:0;
+        padding:14mm 13mm 10mm;box-shadow:none;
+        page-break-after:always;break-after:page;page-break-inside:auto}
+  .page:last-child{page-break-after:auto;break-after:auto}
+  .page .pno{position:static;display:block;text-align:right;margin-top:8mm}
+  .cover{min-height:215mm}
+  figure,table.spec,.sumbox,table.doc{break-inside:avoid;page-break-inside:avoid}
+  svg.chart{width:100%;max-width:140mm;height:auto}
+  svg.zone{width:100%;max-width:160mm;height:auto}
+  p,li{orphans:2;widows:2}
+}
+@media(max-width:1180px){.work{grid-template-columns:1fr}.side{max-height:46vh}#report{zoom:.72}}
+@media(max-width:1560px) and (min-width:1181px){#report{zoom:.86}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="bar">
+    <h1>방폭계산서 작성도구</h1>
+    <span class="std">KOSHA GUIDE E-180-2020 · KS C IEC 60079-10-1</span>
+    <span class="sp"></span>
+    <button id="btnSample">예시 불러오기</button>
+    <button id="btnSave">설정 저장</button>
+    <button id="btnLoad">설정 불러오기</button>
+    <input type="file" id="fileIn" accept=".json" hidden>
+    <button id="btnPdf" class="go">PDF 다운로드</button>
+  </header>
+
+  <div class="work">
+    <aside class="side">
+      <div class="tabs">
+        <button data-tab="doc" class="on">문서</button>
+        <button data-tab="mat">물질</button>
+        <button data-tab="src">누출원</button>
+      </div>
+      <div class="tabpane on" id="pane-doc"></div>
+      <div class="tabpane" id="pane-mat"></div>
+      <div class="tabpane" id="pane-src"></div>
+    </aside>
+    <main class="stage"><div id="report"></div></main>
+  </div>
+</div>
+<script>
+"use strict";
+const $=(s,r=document)=>r.querySelector(s);
+const CIRC=["①","②","③","④","⑤","⑥","⑦","⑧","⑨","⑩","⑪","⑫","⑬","⑭","⑮"];
+const R_GAS=8314, PA_ATM=101325, G=9.8;
+
+/* ===================== 상태 ===================== */
+const MAT_LIB={
+  "톨루엔":{식:"C7H8",M:92.14,rho:866.9,비중:3.14,gamma:1.1,인화점:4,발화점:480,비점:110.6,Pv:3.79,LFL:1.1,그룹:"IIA",온도:"T1",CAS:"108-88-3"},
+  "크실렌":{식:"C8H10",M:106.17,rho:864,비중:3.66,gamma:1.1,인화점:27,발화점:463,비점:138.4,Pv:0.9,LFL:1.0,그룹:"IIA",온도:"T1",CAS:"1330-20-7"},
+  "메틸에틸케톤":{식:"C4H8O",M:72.11,rho:805,비중:2.41,gamma:1.1,인화점:-9,발화점:404,비점:79.6,Pv:10.5,LFL:1.8,그룹:"IIB",온도:"T2",CAS:"78-93-3"},
+  "아세톤":{식:"C3H6O",M:58.08,rho:790,비중:2.0,gamma:1.1,인화점:-20,발화점:465,비점:56.1,Pv:24.6,LFL:2.5,그룹:"IIA",온도:"T1",CAS:"67-64-1"},
+  "메탄올":{식:"CH4O",M:32.04,rho:791,비중:1.11,gamma:1.2,인화점:11,발화점:464,비점:64.7,Pv:12.9,LFL:6.0,그룹:"IIA",온도:"T1",CAS:"67-56-1"},
+  "이소프로필알코올":{식:"C3H8O",M:60.1,rho:786,비중:2.07,gamma:1.1,인화점:12,발화점:399,비점:82.6,Pv:4.4,LFL:2.0,그룹:"IIA",온도:"T2",CAS:"67-63-0"},
+  "노말헥산":{식:"C6H14",M:86.18,rho:659,비중:2.97,gamma:1.1,인화점:-22,발화점:225,비점:68.7,Pv:16.2,LFL:1.1,그룹:"IIA",온도:"T3",CAS:"110-54-3"},
+  "에틸아세테이트":{식:"C4H8O2",M:88.11,rho:902,비중:3.04,gamma:1.1,인화점:-4,발화점:426,비점:77.1,Pv:9.7,LFL:2.0,그룹:"IIA",온도:"T2",CAS:"141-78-6"},
+  "수소":{식:"H2",M:2.02,rho:70,비중:0.07,gamma:1.41,인화점:"-",발화점:560,비점:-252.9,Pv:0,LFL:4.0,그룹:"IIC",온도:"T1",CAS:"1333-74-0"},
+  "메탄(LNG)":{식:"CH4",M:16.04,rho:422,비중:0.55,gamma:1.31,인화점:-188,발화점:537,비점:-161.5,Pv:0,LFL:5.0,그룹:"IIA",온도:"T1",CAS:"74-82-8"},
+  "프로판(LPG)":{식:"C3H8",M:44.1,rho:500,비중:1.55,gamma:1.13,인화점:-104,발화점:450,비점:-42.1,Pv:0,LFL:2.1,그룹:"IIA",온도:"T1",CAS:"74-98-6"}
+};
+function newMat(name){
+  const b=MAT_LIB[name]||MAT_LIB["톨루엔"];
+  return {id:uid(),명칭:name||"톨루엔",식:b.식,M:b.M,rho:b.rho,비중:b.비중,gamma:b.gamma,인화점:b.인화점,발화점:b.발화점,
+    비점:b.비점,Pv:b.Pv,LFL:b.LFL,그룹:b.그룹,온도:b.온도,CAS:b.CAS,비고:""};
+}
+function newSrc(n){
+  return {id:uid(),설비명:"설비-01",설명:"",누출원:"",matId:null,
+    위치:"옥내",상태:"liquid",등급:"2차",등급근거:"",
+    Cd:1,S:2.5,S근거:"",
+    t:3600,dPmode:"head",h:2,dP:0,
+    poolMode:"spill",D:2.3,
+    P_MPa:1.0,T_gas:288,
+    k:1,k근거:"실험결과 또는 문헌자료에 폭발하한이 명확한 물질(단일 및 혼합물질)",
+    uw:0.05,uw근거:"옥내의 경우 최소 공기속도 0.05 m/s 를 가정(<표 1> 비고)",uwLink:true,uwPool:0.05,
+    이용도:"미흡",이용도직접:"",이용도적용:"미흡",
+    누출형태:"무거운가스",
+    희석모드:"auto",희석수동:"중희석",희석근거:"설비특성상",
+    범위모드:"auto",범위수동:1,수평:1,수직:1,
+    Ta:25,Top:25,운전압력:"ATM",비고:""};
+}
+function uid(){return Math.random().toString(36).slice(2,9)}
+
+function thisYM(){const d=new Date();return d.getFullYear()+". "+String(d.getMonth()+1).padStart(2,"0")+"."}
+const S={
+  doc:{회사:"",소재지:"",년월:thisYM(),작성자:"",
+    개요:"인화성물질을 쓰는 검토대상 설비에 대한 폭발 위험 지역 구분에 대해서 산업안전보건규칙 제230조에 따른 '산업표준화법'과 참고 문헌으로, IEC 60079-10-1(2020), KOSHA Guide E-180-2020(가스폭발위험장소의 설정에 관한 기술지침)을 Reference로 적용하였음",
+    물질비고:""},
+  mats:[],srcs:[],selMat:0,selSrc:0
+};
+S.mats.push(newMat("톨루엔"));
+S.srcs.push(newSrc());
+S.srcs[0].matId=S.mats[0].id;
+
+/* ===================== 수치 포맷 ===================== */
+function trim(s){return String(s).replace(/\.?0+$/,"").replace(/\.$/,"")}
+function sci(x,sig){sig=sig||3;
+  if(!isFinite(x))return"-";
+  const e=Math.floor(Math.log10(Math.abs(x)));const m=x/Math.pow(10,e);
+  return trim(m.toPrecision(sig))+" × 10<sup>"+String(e).replace("-","\u2212")+"</sup>";}
+function num(x,sig){sig=sig||3;
+  if(x===null||x===undefined||!isFinite(x))return"-";
+  const a=Math.abs(x); if(a===0)return"0";
+  if(a>=1e-3&&a<1e5)return trim(Number(x.toPrecision(sig)).toString());
+  return sci(x,sig);}
+function fx(x,d){return isFinite(x)?Number(x).toFixed(d):"-"}
+
+/* ===================== 계산 엔진 ===================== */
+// 희석등급 경계선 (KOSHA E-180 부속서 C 그림 C.1 디지타이징)
+const DIL_HI={a:15.4814,b:1.01456};   // uw = a·C^b  (위쪽 = 고희석)
+const DIL_LO={a:0.047638,b:0.98763};  // uw = a·C^b  (아래쪽 = 저희석)
+// 범위 곡선 (부속서 D 그림 D.1)
+const EXT={무거운가스:{a:8.5725,b:0.48750},저속확산:{a:4.2341,b:0.49757},고속제트:{a:2.2036,b:0.52183}};
+
+function calcSrc(s,m){
+  const r={ok:true,msg:[],phase:s.상태};
+  if(!m){r.ok=false;r.msg.push("물질이 지정되지 않았습니다.");return r}
+  const M=+m.M,LFL=+m.LFL/100,rho=+m.rho,Pv=+m.Pv,k=+s.k,S_m2=(+s.S)/1e6;
+  r.LFL=LFL;r.S_m2=S_m2;
+  const Ta=+s.Ta+273.15, Top=+s.Top+273.15;
+  r.Ta=Ta;r.Top=Top;
+
+  if(s.상태==="liquid"){
+    r.dP = s.dPmode==="head" ? rho*G*(+s.h) : +s.dP;
+    r.W  = (+s.Cd)*S_m2*Math.sqrt(2*rho*r.dP);
+    r.V  = r.W*(+s.t)/rho;
+    if(s.poolMode==="tank"){ r.Ap=Math.PI*Math.pow(+s.D,2)/4; }
+    else { r.Ap=r.V/0.01; }
+    r.uwPool = s.uwLink? +s.uw : +s.uwPool;
+    r.Qg = 6.5*Math.pow(r.uwPool,0.78)*r.Ap*Pv/(1e5*Math.pow(M,0.333))*(Ta/Top);
+    r.C  = r.Qg/(k*LFL);
+    r.Wg = null;
+  }else{
+    const g=+m.gamma, P=(+s.P_MPa)*1e6, T=+s.T_gas;
+    r.gamma=g;r.P=P;r.T=T;
+    r.Pc = PA_ATM*Math.pow((g+1)/2, g/(g-1));
+    r.choked = P>=r.Pc;
+    if(r.choked){
+      r.Wg=(+s.Cd)*S_m2*P*Math.sqrt(g*M/(R_GAS*T)*Math.pow(2/(g+1),(g+1)/(g-1)));
+    }else{
+      const inner=M/(R_GAS*T)*(2*g/(g-1))*(1-Math.pow(PA_ATM/P,(g-1)/g));
+      r.Wg=(+s.Cd)*S_m2*P*Math.sqrt(Math.max(inner,0))*Math.pow(PA_ATM/P,1/g);
+    }
+    r.rho_g = PA_ATM*M/(R_GAS*Ta);
+    r.Qg = r.Wg/r.rho_g;
+    r.C  = r.Wg/(r.rho_g*k*LFL);
+  }
+  // 희석등급
+  const uw=+s.uw;
+  r.uw=uw;
+  r.bHi = DIL_HI.a*Math.pow(r.C,DIL_HI.b);
+  r.bLo = DIL_LO.a*Math.pow(r.C,DIL_LO.b);
+  r.희석auto = uw>=r.bHi ? "고희석" : (uw<=r.bLo ? "저희석" : "중희석");
+  r.희석 = s.희석모드==="auto" ? r.희석auto : s.희석수동;
+  // 종별
+  r.이용도 = s.이용도==="직접입력" ? s.이용도적용 : s.이용도;
+  r.cell = zoneCell(s.등급, r.희석, r.이용도);
+  r.zone = zoneShort(r.cell);
+  r.NE = /^비위험/.test(r.cell.replace(/<br>/g,""));
+  // 범위
+  const cv=EXT[s.누출형태];
+  r.rRaw = cv.a*Math.pow(r.C,cv.b);
+  r.rChart = Math.max(1, r.rRaw);
+  r.belowChart = r.rRaw<1;
+  r.범위 = s.범위모드==="auto" ? Math.max(1,Math.round(r.rChart*10)/10) : +s.범위수동;
+  if(r.NE) r.msg.push("판정 결과가 NE(무시할 수 있는 범위)이므로 지침 부속서 D <그림 D.1> 비고에 따라 범위 그래프로 거리를 산정하지 않는다.");
+  if(s.위치==="옥내"&&r.희석==="저희석") r.msg.push("옥내·저희석 조건이다. 지침 부속서 C 1.2(3) 및 부속서 B 3.3(4)에 따라 밀폐공간 전체를 하나의 폭발위험장소로 구분하고 개구부를 별도 누출원으로 검토해야 한다.");
+  return r;
+}
+const ZONE_TBL={
+  "연속":{"고희석":{"우수":"비위험<br>(0종 NE)","양호":"2종 장소<br>(0종 NE)","미흡":"1종 장소<br>(0종 NE)"},
+        "중희석":{"우수":"0종 장소","양호":"0종 장소<br>+1종 장소","미흡":"0종 장소<br>+1종 장소"},
+        "저희석":{"*":"0종 장소"}},
+  "1차":{"고희석":{"우수":"비위험<br>(1종 NE)","양호":"2종 장소<br>(1종 NE)","미흡":"2종 장소<br>(1종 NE)"},
+        "중희석":{"우수":"1종 장소","양호":"1종 장소<br>+2종 장소","미흡":"1종 장소<br>+2종 장소"},
+        "저희석":{"*":"1종 또는<br>0종 장소"}},
+  "2차":{"고희석":{"우수":"비위험<br>(2종 NE)","양호":"비위험<br>(2종 NE)","미흡":"2종 장소"},
+        "중희석":{"우수":"2종 장소","양호":"2종 장소","미흡":"2종 장소"},
+        "저희석":{"*":"1종 및 0종<br>장소"}}
+};
+function zoneCell(g,d,u){const row=ZONE_TBL[g]||ZONE_TBL["2차"];const col=row[d]||row["중희석"];return col["*"]||col[u]||col["미흡"]}
+function zoneShort(c){let t=c.replace(/<br>/g,"").replace(/\([^)]*NE[^)]*\)/g,"");
+  if(/^비위험/.test(t))return"비위험";
+  const mm=t.match(/[012]종/g);
+  if(!mm)return"-";
+  return [...new Set(mm)].join("+");
+}
+function zoneClass(z){if(/0종/.test(z))return"z0";if(/1종/.test(z))return"z1";if(/2종/.test(z))return"z2";return"zn"}
+
+/* ===================== 그래프(SVG) ===================== */
+function lg(v,min,max,p0,p1){return p0+(Math.log10(v)-Math.log10(min))/(Math.log10(max)-Math.log10(min))*(p1-p0)}
+function gridLines(xmin,xmax,ymin,ymax,X0,X1,Y0,Y1){
+  let g="";
+  for(let d=Math.log10(xmin);d<=Math.log10(xmax)+1e-9;d++){
+    for(let i=1;i<10;i++){const v=i*Math.pow(10,d);if(v>xmax*1.0001)break;
+      const x=lg(v,xmin,xmax,X0,X1);
+      g+=`<line x1="${x.toFixed(1)}" y1="${Y1}" x2="${x.toFixed(1)}" y2="${Y0}" stroke="#d5d5d5" stroke-width="${i===1?1:.5}"/>`;}
+  }
+  for(let d=Math.log10(ymin);d<=Math.log10(ymax)+1e-9;d++){
+    for(let i=1;i<10;i++){const v=i*Math.pow(10,d);if(v>ymax*1.0001)break;
+      const y=lg(v,ymin,ymax,Y1,Y0);
+      g+=`<line x1="${X0}" y1="${y.toFixed(1)}" x2="${X1}" y2="${y.toFixed(1)}" stroke="#d5d5d5" stroke-width="${i===1?1:.5}"/>`;}
+  }
+  return g;
+}
+function axLabels(min,max,axis,X0,X1,Y0,Y1){
+  let g="";
+  for(let d=Math.log10(min);d<=Math.log10(max)+1e-9;d++){
+    const v=Math.pow(10,d), t=(v>=0.001&&v<10000)?trim(v.toFixed(Math.max(0,-d))):v.toExponential();
+    if(axis==="x"){const x=lg(v,min,max,X0,X1);g+=`<text x="${x.toFixed(1)}" y="${Y1+16}" font-size="11" text-anchor="middle" font-family="Arial">${t}</text>`}
+    else{const y=lg(v,min,max,Y1,Y0);g+=`<text x="${X0-6}" y="${(y+4).toFixed(1)}" font-size="11" text-anchor="end" font-family="Arial">${t}</text>`}
+  }
+  return g;
+}
+function powLine(a,b,xmin,xmax,ymin,ymax,X0,X1,Y0,Y1,color,w){
+  const pts=[];const n=180;
+  for(let i=0;i<=n;i++){
+    const x=xmin*Math.pow(xmax/xmin,i/n), y=a*Math.pow(x,b);
+    if(y<ymin*0.9||y>ymax*1.1)continue;
+    pts.push(lg(x,xmin,xmax,X0,X1).toFixed(1)+","+lg(y,ymin,ymax,Y1,Y0).toFixed(1));
+  }
+  return `<polyline points="${pts.join(" ")}" fill="none" stroke="${color}" stroke-width="${w||2.2}"/>`;
+}
+function marker(cx,cy,label){
+  return `<g><circle cx="${cx}" cy="${cy}" r="10" fill="none" stroke="#f5761a" stroke-width="4.5"/>`+
+   `<circle cx="${cx}" cy="${cy}" r="3.4" fill="#f5761a"/></g>`;
+}
+// 희석등급 그래프
+function chartDilution(r){
+  const X0=78,X1=618,Y0=28,Y1=428, xmin=1e-3,xmax=1e2, ymin=1e-3,ymax=1e1;
+  let g=`<svg class="chart" viewBox="0 0 660 470" xmlns="http://www.w3.org/2000/svg">`;
+  g+=`<rect x="0" y="0" width="660" height="470" fill="#fff"/>`;
+  g+=gridLines(xmin,xmax,ymin,ymax,X0,X1,Y0,Y1);
+  g+=`<rect x="${X0}" y="${Y0}" width="${X1-X0}" height="${Y1-Y0}" fill="none" stroke="#333"/>`;
+  g+=axLabels(xmin,xmax,"x",X0,X1,Y0,Y1)+axLabels(ymin,ymax,"y",X0,X1,Y0,Y1);
+  g+=powLine(DIL_HI.a,DIL_HI.b,xmin,xmax,ymin,ymax,X0,X1,Y0,Y1,"#1f4fd8");
+  g+=powLine(DIL_LO.a,DIL_LO.b,xmin,xmax,ymin,ymax,X0,X1,Y0,Y1,"#e02020");
+  const box=(x,y,t)=>`<rect x="${x}" y="${y}" width="72" height="26" fill="#fff" stroke="#1f4fd8"/><text x="${x+36}" y="${y+18}" font-size="12" text-anchor="middle" font-family="Malgun Gothic">${t}</text>`;
+  g+=box(120,88,"고희석")+box(330,190,"중희석")+box(490,290,"저희석");
+  g+=`<text x="${(X0+X1)/2}" y="${Y1+40}" font-size="11.5" text-anchor="middle" font-family="Malgun Gothic">누출 특성  W&#8342;/(ρ&#8342; × k × LFL)  (m³/s)</text>`;
+  g+=`<text transform="translate(22,${(Y0+Y1)/2}) rotate(-90)" font-size="11.5" text-anchor="middle" font-family="Malgun Gothic">환기속도  u&#8383;  (m/s)</text>`;
+  if(r&&isFinite(r.C)&&r.C>0){
+    const cx=Math.min(Math.max(lg(Math.min(Math.max(r.C,xmin),xmax),xmin,xmax,X0,X1),X0),X1);
+    const cy=Math.min(Math.max(lg(Math.min(Math.max(r.uw,ymin),ymax),ymin,ymax,Y1,Y0),Y0),Y1);
+    g+=`<line x1="${X0}" y1="${cy}" x2="${cx}" y2="${cy}" stroke="#f5761a" stroke-width="1" stroke-dasharray="5 4"/>`;
+    g+=`<line x1="${cx}" y1="${Y1}" x2="${cx}" y2="${cy}" stroke="#f5761a" stroke-width="1" stroke-dasharray="5 4"/>`;
+    g+=marker(cx,cy);
+    g+=`<text x="${cx+16}" y="${cy-12}" font-size="11" font-family="Malgun Gothic" fill="#c2410c">(${num(r.C).replace(/<[^>]+>/g,"^")} , ${num(r.uw)})</text>`;
+  }
+  return g+`</svg>`;
+}
+// 범위 그래프
+function chartExtent(r,type){
+  const X0=78,X1=618,Y0=28,Y1=388, xmin=1e-2,xmax=1e2, ymin=1,ymax=1e2;
+  let g=`<svg class="chart" viewBox="0 0 660 430" xmlns="http://www.w3.org/2000/svg">`;
+  g+=`<rect x="0" y="0" width="660" height="430" fill="#fff"/>`;
+  g+=gridLines(xmin,xmax,ymin,ymax,X0,X1,Y0,Y1);
+  g+=`<rect x="${X0}" y="${Y0}" width="${X1-X0}" height="${Y1-Y0}" fill="none" stroke="#333"/>`;
+  g+=axLabels(xmin,xmax,"x",X0,X1,Y0,Y1)+axLabels(ymin,ymax,"y",X0,X1,Y0,Y1);
+  g+=powLine(EXT.무거운가스.a,EXT.무거운가스.b,xmin,xmax,ymin,ymax,X0,X1,Y0,Y1,"#e02020");
+  g+=powLine(EXT.저속확산.a,EXT.저속확산.b,xmin,xmax,ymin,ymax,X0,X1,Y0,Y1,"#1f4fd8");
+  g+=powLine(EXT.고속제트.a,EXT.고속제트.b,xmin,xmax,ymin,ymax,X0,X1,Y0,Y1,"#2f7d32");
+  g+=`<text x="470" y="72" font-size="12" font-family="Malgun Gothic" fill="#c00">무거운 가스</text>`;
+  g+=`<text x="470" y="128" font-size="12" font-family="Malgun Gothic" fill="#1f4fd8">저속의 확산</text>`;
+  g+=`<text x="470" y="182" font-size="12" font-family="Malgun Gothic" fill="#2f7d32">고속의 제트</text>`;
+  g+=`<text x="${(X0+X1)/2}" y="${Y1+40}" font-size="11.5" text-anchor="middle" font-family="Malgun Gothic">누출 특성  W&#8342;/(ρ&#8342; × k × LFL)  (m³/s)</text>`;
+  g+=`<text transform="translate(22,${(Y0+Y1)/2}) rotate(-90)" font-size="11.5" text-anchor="middle" font-family="Malgun Gothic">폭발위험장소의 범위 (m)</text>`;
+  if(r&&isFinite(r.C)&&r.C>0){
+    const cx=Math.min(Math.max(lg(Math.min(Math.max(r.C,xmin),xmax),xmin,xmax,X0,X1),X0),X1);
+    const cy=Math.min(Math.max(lg(Math.min(Math.max(r.rChart,ymin),ymax),ymin,ymax,Y1,Y0),Y0),Y1);
+    g+=`<line x1="${X0}" y1="${cy}" x2="${cx}" y2="${cy}" stroke="#f5761a" stroke-width="1" stroke-dasharray="5 4"/>`;
+    g+=`<line x1="${cx}" y1="${Y1}" x2="${cx}" y2="${cy}" stroke="#f5761a" stroke-width="1" stroke-dasharray="5 4"/>`;
+    g+=marker(cx,cy);
+    g+=`<text x="${cx+16}" y="${cy-12}" font-size="11" font-family="Malgun Gothic" fill="#c2410c">r = ${num(r.rChart)} m</text>`;
+  }
+  return g+`</svg>`;
+}
+function zoneHatchSvg(){
+  return `<svg class="zone" viewBox="0 0 640 130" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <pattern id="p0" width="22" height="22" patternUnits="userSpaceOnUse"><circle cx="11" cy="11" r="5" fill="none" stroke="#000"/></pattern>
+    <pattern id="p1" width="18" height="18" patternUnits="userSpaceOnUse"><path d="M0,0 L18,18 M18,0 L0,18" stroke="#000" fill="none"/></pattern>
+    <pattern id="p2" width="18" height="18" patternUnits="userSpaceOnUse"><path d="M0,18 L18,0" stroke="#000" fill="none"/></pattern>
+  </defs>
+  <rect x="10" y="8" width="190" height="86" fill="url(#p0)" stroke="#000"/>
+  <rect x="225" y="8" width="190" height="86" fill="url(#p1)" stroke="#000"/>
+  <rect x="440" y="8" width="190" height="86" fill="url(#p2)" stroke="#000"/>
+  <text x="105" y="116" font-size="12" text-anchor="middle" font-family="Malgun Gothic">a) 0종장소(Zone 0)</text>
+  <text x="320" y="116" font-size="12" text-anchor="middle" font-family="Malgun Gothic">b) 1종장소(Zone 1)</text>
+  <text x="535" y="116" font-size="12" text-anchor="middle" font-family="Malgun Gothic">c) 2종장소(Zone 2)</text>
+  </svg>`;
+}
+</script>
+<script>
+/* ===================== 공용 기준표 ===================== */
+const REL_DEF={
+ "연속":["연속 누출등급(Continuous) 연속, 빈번 또는 장기간 발생할 것으로 예상되는 누출",
+   ["대기와 연결된 고정 통기구가 설치된 고정 지붕 탱크 내부의 인화성 액체 표면",
+    "지속적으로 또는 장기간 동안 대기에 개방되어 있는 인화성 액체 표면"]],
+ "1차":["1차 누출등급(Primary) 정상작동 중에 주기적 또는 간헐적으로 발생할 수 있는 누출",
+   ["정상작동 중에 가연성 물질의 누출이 예상되는 펌프, 압축기 또는 밸브의 밀봉부",
+    "정상작동 중의 배수과정에서 대기로 인화성 물질이 누출될 수 있는 용기의 배수점 등",
+    "정상작동 중 인화성 물질의 누출이 예상되는 시료 채취점",
+    "정상작동 중 인화성 물질의 누출이 예상되는 릴리프 밸브, 통기구 및 기타 개구부 등"]],
+ "2차":["2차 누출등급(Secondary) 정상작동 중에는 발생하지 않고, 발생한다 하더라도 간헐적이거나 단시간 동안의 누출",
+   ["설비의 정상작동 중에는 인화성 물질의 누출이 예상되지 않는 펌프, 압축기 및 밸브의 밀봉부",
+    "정상작동 중에는 인화성 물질의 누출이 예상되지 않는 플랜지, 연결부, 배관 피팅부 등",
+    "정상작동 중에는 인화성 물질의 누출이 예상되지 않는 시료 채취점",
+    "정상작동 중 인화성 물질의 누출이 예상되지 않는 릴리프 밸브, 통기구 및 기타 개구부 등"]]
+};
+const HOLE_ROWS=[
+ ["고정부의 실링 요소","압축섬유 개스킷 류의 플랜지","≥ 0.025 ~ 0.25|0.25","> 0.25 ~ 2.5|2.5","(두볼트 사이의 거리)×(개스킷 두께) 보통 ≥ 1 mm|1"],
+ [null,"나선형 운드(spiral wound) 개스킷 류의 플랜지","0.025|0.025","0.25|0.25","(두볼트 사이의 거리)×(개스킷 두께) 보통 ≥ 0.5 mm|0.5"],
+ [null,"링형태조인트 연결부품","0.1|0.1","0.25|0.25","0.5|0.5"],
+ [null,"50 ㎜ 이하 구멍연결부<sup>a</sup>","≥ 0.025 ~ 0.1|0.1","> 0.1 ~ 0.25|0.25","1.0|1.0"],
+ ["저속 가동 부품류의 실링요소","밸브 스템 패킹","0.25|0.25","2.5|2.5","제조사 자료 또는 공정설비 배치에 따라 결정, 25㎟ 미만<sup>d</sup>|25"],
+ [null,"압력누출밸브<sup>b</sup>","0.1 (오리피스부위)|0.1","NA|","NA|"],
+ ["고속 가동 부품류의 실링요소","펌프, 압축기<sup>c</sup>","NA|","≥ 1 ~ 5|5","제조사 자료 또는 공정설비 배치에 따라 결정, 최소 5㎟<sup>d 및 e</sup>|5"]
+];
+const HOLE_NOTE=`a 소규경 배관의 링 조인트, 나사 연결, 압축 조인트(예, 금속 압축 피팅) 및 래피드 조인트에 제안되는 누출구멍 단면<br>
+b 여기에서는 밸브의 완전 개방을 전제하지는 않지만, 밸브 부품의 고장으로 다양한 누설이 있을 수 있다. 특이한 경우, 제안된 것보다 큰 누출구멍 단면을 가질 수 있다.<br>
+c 왕복 압축기 – 압축기의 프레임과 실린더에서는 통상 누설이 일어나지 않지만, 공정설비의 피스톤로드 패킹과 다양한 배관 연결부에서 누설이 일어난다.<br>
+d 장비 제조자 데이터 – 예상되는 고장의 경우 그 영향을 평가하기 위하여 장비 제조자의 협력 필요(예, 밀봉장치 관련 세부 도면의 이용성)<br>
+e 공정설비 배치 – 특정 상황(예, 사전 연구), 인화성 물질의 최대 허용 누출률로 정의하는 운전 분석은 장비 제조자 데이터의 부족을 보완할 수 있다.<br>
+주. 기타 일반적인 값은 특정 응용에 대한 관련 국가 또는 산업 코드에서 구할 수 있다.`;
+const K_ROWS=[[1,"실험결과 또는 문헌자료에 폭발하한이 명확한 물질(단일 및 혼합물질)","1.0"],
+              [2,"혼합물질로 폭발하한이 명확하게 제시되지 않은 물질","0.8"],
+              [3,"누출속도 또는 확산거동 등이 명확하지 않은 그 밖의 경우","0.5"]];
+const UW_ROWS=[["공기보다 가벼운 가스/증기의 누출을 추정하기 위한 환기속도",[0.5,1.0,2.0,0.5,0.5,1.0]],
+               ["공기보다 무거운 가스/증기의 누출을 추정하기 위한 환기속도",[0.3,0.6,1.0,0.15,0.3,1.0]],
+               ["모든 고도에서 액체 풀(pool) 증발률을 추정하기 위한 환기속도",[0.25,0.25,0.25,0.1,0.1,0.1]]];
+const UW_NOTE=`– 일반적으로, 표의 값은 양호한 환기로 간주한다.<br>– 옥내의 경우, 일반적으로 평가는 <u>최소 공기 속도 0.05 m/s를 가정을 근거로</u> 하며, 이는 실제로 어디서나 해당된다.<br>– 특정 상황에서는 다양한 값을 가정할 수 있다(예, 공기 인입구/배출구 입구에 가까운 곳).<br>– 환기배치를 제어할 수 있는 경우, 최소 환기속도를 환산할 수 있다.`;
+
+function tblRelease(sel,click){
+  let h=`<table class="pick deftbl"><colgroup><col style="width:56px"><col></colgroup>`;
+  for(const g of ["연속","1차","2차"]){
+    const d=REL_DEF[g];
+    h+=`<tr class="${sel===g?"on":""}"><td class="lab" style="text-align:center">${click?`<button class="mini" data-act="rel" data-v="${g}">${g}</button>`:g}</td>
+      <td style="text-align:left"><b>${d[0]}</b><br>${d[1].map((x,i)=>`${CIRC[i]} ${x}`).join("<br>")}</td></tr>`;
+  }
+  return h+`</table>`;
+}
+function tblRelDoc(){
+  let h=`<table class="doc"><colgroup><col style="width:60px"><col></colgroup>`;
+  for(const g of ["연속","1차","2차"]){const d=REL_DEF[g];
+    h+=`<tr><td><b>${g}</b></td><td class="l note"><b>${d[0]}</b><br>${d[1].map((x,i)=>`${CIRC[i]} ${x}`).join("<br>")}</td></tr>`;}
+  return h+`</table>`;
+}
+function tblHole(sel,click,cls){
+  const C=(txt,v,extra)=>{
+    const on=(click||cls)&&v!==""&&Math.abs(+v-+sel)<1e-9;
+    return `<td class="${click?"hit ":""}${on?(click?"on":"cellhit"):""}" ${click&&v!==""?`data-act="hole" data-v="${v}"`:""}>${txt}</td>`;
+  };
+  let h=`<table class="${cls||"pick"}"><tr><th rowspan="2">구 분</th><th rowspan="2">항 목</th><th colspan="3">누출 고려사항</th></tr>
+  <tr><th>누출개구부가 확대되지 않는 조건에서의 일반값, S(㎟)</th><th>누출개구부가 부식 등에 의해 확대될 수 있는 조건에서의 일반값, S(㎟)</th><th>누출 개구부가 심한 고장 등에 의해 확대될 수 있는 조건에 대한 일반 값 S(㎟)</th></tr>`;
+  const spans=[4,null,null,null,2,null,1];
+  HOLE_ROWS.forEach((r,i)=>{
+    h+=`<tr>`;
+    if(r[0]!==null){const rs=[4,2,1][[0,4,6].indexOf(i)];h+=`<td class="lab" rowspan="${rs}">${r[0]}</td>`}
+    h+=`<td class="lab">${r[1]}</td>`;
+    for(let j=2;j<5;j++){const p=r[j].split("|");h+=C(p[0],p[1]);}
+    h+=`</tr>`;
+  });
+  h+=`<tr><td colspan="5" class="note" style="text-align:left;font-size:8pt">${HOLE_NOTE}</td></tr>`;
+  return h+`</table>`;
+}
+function tblK(sel,click,cls){
+  let h=`<table class="${cls||"pick"}"><tr><th style="width:36px">No</th><th>내 용</th><th style="width:52px">값</th></tr>`;
+  K_ROWS.forEach(r=>{
+    const on=Math.abs(+r[2]-+sel)<1e-9;
+    h+=`<tr class="${click&&on?"on":""}"><td>${r[0]}</td><td class="lab ${!click&&on?"hl":""}" style="text-align:left">${r[1]}</td>
+      <td class="${click?"hit ":""}${on?(click?"on":"cellhit"):""}" ${click?`data-act="k" data-v="${r[2]}"`:""}><b>${r[2]}</b></td></tr>`;
+  });
+  return h+`</table>`;
+}
+function tblUw(sel,click,cls){
+  const C=(v)=>{const on=Math.abs(+v-+sel)<1e-9;
+    return `<td class="${click?"hit ":""}${on?(click?"on":"cellhit"):""}" ${click?`data-act="uw" data-v="${v}"`:""}>${v}</td>`};
+  let h=`<table class="${cls||"pick"}"><tr><th rowspan="2">옥외 위치의 형태</th><th colspan="3">장애물 없는 지역(m/s)</th><th colspan="3">장애물 있는 지역(m/s)</th></tr>
+  <tr><th>≤2m</th><th>&gt;2~5m</th><th>&gt;5m</th><th>≤2m</th><th>&gt;2~5m</th><th>&gt;5m</th></tr>
+  <tr><td class="lab">지표면에서 부터의 높이</td><td colspan="6" style="font-size:9px;color:#777">↓ 해당 칸을 클릭하면 환기속도가 적용됩니다</td></tr>`;
+  UW_ROWS.forEach(r=>{h+=`<tr><td class="lab">${r[0]}</td>${r[1].map(C).join("")}</tr>`});
+  h+=`<tr><td colspan="7" class="note" style="text-align:left;font-size:8pt">${UW_NOTE}</td></tr>`;
+  return h+`</table>`;
+}
+function tblUwDoc(sel){
+  const C=(v)=>`<td class="${Math.abs(+v-+sel)<1e-9?"cellhit":""}">${v}</td>`;
+  let h=`<table class="doc"><tr><th rowspan="2">옥외 위치의 형태</th><th colspan="3">장애물 없는 지역(m/s)</th><th colspan="3">장애물 있는 지역(m/s)</th></tr>
+  <tr><th>≤2m</th><th>&gt;2~5m</th><th>&gt;5m</th><th>≤2m</th><th>&gt;2~5m</th><th>&gt;5m</th></tr>
+  <tr><td class="l">지표면에서 부터의 높이</td><td colspan="6"></td></tr>`;
+  UW_ROWS.forEach(r=>{h+=`<tr><td class="l">${r[0]}</td>${r[1].map(C).join("")}</tr>`});
+  h+=`<tr><td colspan="7" class="note">${UW_NOTE}</td></tr>`;
+  return h+`</table>`;
+}
+function tblZone(등급,희석,이용도,hi){
+  const DIL=["고희석","중희석","저희석"],UTL=["우수","양호","미흡"];
+  const head=`<tr><th rowspan="4" style="width:52px">누출<br>등급</th><th colspan="7">환기유효성</th></tr>
+  <tr><th colspan="3">고희석</th><th colspan="3">중희석</th><th>저희석</th></tr>
+  <tr><th colspan="7">환기 이용도</th></tr>
+  <tr>${UTL.map((u,i)=>`<th class="${hi&&희석==="고희석"&&이용도===u?"colhit":""}">${u}<br>(${["good","fair","poor"][i]})</th>`).join("")}
+     ${UTL.map(u=>`<th class="${hi&&희석==="중희석"&&이용도===u?"colhit":""}">${u}</th>`).join("")}
+     <th class="${hi&&희석==="저희석"?"colhit":""}">우수,<br>양호,<br>미흡</th></tr>`;
+  let body="";
+  for(const g of ["연속","1차","2차"]){
+    const rowOn=hi&&g===등급;
+    body+=`<tr><td class="${rowOn?"rowhit":""}"><b>${g}${g==="2차"?"<sup>b</sup>":""}</b></td>`;
+    for(const d of DIL){
+      const us= d==="저희석"?["*"]:UTL;
+      for(const u of us){
+        const val=zoneCell(g,d,u==="*"?"우수":u);
+        const isCell=hi&&g===등급&&d===희석&&(d==="저희석"||u===이용도);
+        const colOn=hi&&d===희석&&(d==="저희석"||u===이용도);
+        body+=`<td class="${isCell?"cellhit":(rowOn?"rowhit":(colOn?"colhit":""))}">${val}${/NE/.test(val)?"<sup>a</sup>":""}</td>`;
+      }
+    }
+    body+=`</tr>`;
+  }
+  const note=`<tr><td colspan="8" class="note">a 0종 NE, 1종 NE, 2종 NE 는 정상조건에서는 무시될 수 있는 범위의 이론적 폭발위험장소를 말한다.<br>
+  b 2차 누출등급으로 형성된 2종 장소가 1차 또는 연속 누출등급에 의한 장소보다 클 수 있다. 이 경우, 더 큰 거리를 선정하는 것이 좋다.<br>
+  c 환기가 아주 약하고 실제로 폭발성 가스분위기가 지속되는 누출의 경우(즉, 환기되지 않는 것에 가까운 상태)에는 0종 장소에 속할 수 있다.<br>
+  '+'는 '~에 둘러싸여 있음'을 뜻한다. 자연환기가 일어나는 밀폐공간에서의 환기이용도는 '우수'로 고려해서는 안 된다.</td></tr>`;
+  return `<table class="doc" style="font-size:8.5pt">${head}${body}${note}</table>`;
+}
+
+/* ===================== 수식 HTML ===================== */
+const EQ={
+ liq:`<span class="fm"><i>W</i> = <i>C<sub>d</sub></i><i>S</i><span class="sqrt">√<span style="border-top:1.2px solid #000">2<i>ρ</i>Δ<i>P</i></span></span></span>`,
+ pool:`<span class="fm"><i>Q<sub>g</sub></i> = <span class="frac"><span>6.5<i>u<sub>w</sub></i><sup>0.78</sup><i>A<sub>p</sub></i><i>P<sub>v</sub></i></span><span class="den">10<sup>5</sup><i>M</i><sup>0.333</sup></span></span> × <span class="frac"><span><i>T<sub>a</sub></i></span><span class="den"><i>T</i></span></span> (m³/s)</span>`,
+ pc:`<span class="fm"><i>P<sub>C</sub></i> = <i>P<sub>a</sub></i>[<span class="frac"><span><i>γ</i>+1</span><span class="den">2</span></span>]<sup><i>γ</i>/(<i>γ</i>−1)</sup></span>`,
+ nonchoked:`<span class="fm"><i>W<sub>g</sub></i> = <i>C<sub>d</sub>SP</i><span class="sqrt">√<span style="border-top:1.2px solid #000"><span class="frac"><span><i>M</i></span><span class="den"><i>ZRT</i></span></span><span class="frac"><span>2<i>γ</i></span><span class="den"><i>γ</i>−1</span></span>[1−(<span class="frac"><span><i>P<sub>a</sub></i></span><span class="den"><i>P</i></span></span>)<sup>(<i>γ</i>−1)/<i>γ</i></sup>]</span></span>(<span class="frac"><span><i>P<sub>a</sub></i></span><span class="den"><i>P</i></span></span>)<sup>1/<i>γ</i></sup></span>`,
+ choked:`<span class="fm"><i>W<sub>g</sub></i> = <i>C<sub>d</sub>SP</i><span class="sqrt">√<span style="border-top:1.2px solid #000"><i>γ</i><span class="frac"><span><i>M</i></span><span class="den"><i>ZRT</i></span></span>[<span class="frac"><span>2</span><span class="den"><i>γ</i>+1</span></span>]<sup>(<i>γ</i>+1)/(<i>γ</i>−1)</sup></span></span></span>`,
+ char:`<span class="fm">누출특성 = <span class="frac"><span><i>W<sub>g</sub></i></span><span class="den"><i>ρ<sub>g</sub></i> × <i>k</i> × LFL</span></span> = <span class="frac"><span><i>Q<sub>g</sub></i></span><span class="den"><i>k</i> × LFL</span></span></span>`,
+ ap:`<span class="fm"><i>A<sub>p</sub></i> = <span class="frac"><span><i>V</i><sub>누출</sub></span><span class="den">0.01 m</span></span> , <i>V</i><sub>누출</sub> = <span class="frac"><span><i>W</i> × <i>t</i></span><span class="den"><i>ρ</i></span></span> , <i>W</i> = <i>C<sub>d</sub>S</i><span class="sqrt">√<span style="border-top:1.2px solid #000">2<i>ρ</i>Δ<i>P</i></span></span></span>`
+};
+const DEF={
+ liq:`<div class="deflist"><b><i>W</i></b> : 액체의 누출율 (kg/s)<br><b><i>C<sub>d</sub></i></b> : 누출계수 (단위 없음), 일반적으로 모난 오리피스는 0.5~0.75<br><b><i>S</i></b> : 유체가 누출되는 개구부(구멍)의 단면적 (m²)<br><b><i>ρ</i></b> : 액체 밀도 (kg/m³)<br><b>Δ<i>P</i></b> : 개구부에서의 누설 압력 차 (Pa)</div>`,
+ pool:`<div class="deflist"><b><i>Q<sub>g</sub></i></b> : 부피증발률 (m³/s)<br><b><i>u<sub>w</sub></i></b> : 풀 표면 풍속 (m/s)<br><b><i>A<sub>p</sub></i></b> : 풀 표면적 (m²)<br><b><i>P<sub>v</sub></i></b> : 액체 증기압 (kPa)<br><b><i>M</i></b> : 몰질량 (kg/kmol)<br><b><i>R</i></b> : 기체상수 (8314 J/kmol·K)<br><b><i>T<sub>a</sub></i></b> : 주위온도 (K)<br><b><i>T</i></b> : 유체온도 (K)</div>`,
+ gas:`<div class="deflist"><b><i>W<sub>g</sub></i></b> : 가스누출률 (kg/s)<br><b><i>C<sub>d</sub></i></b> : 누출계수(단위없음), 일반적으로 모난 오리피스는 0.5~0.75<br><b><i>M</i></b> : 가스 또는 증기의 몰 질량 (kg/kmol)<br><b><i>γ</i></b> : 단열 팽창 폴리트로픽 지수(단위없음)<br><b><i>P</i></b> : 용기 내부의 압력 (Pa)<br><b><i>P<sub>a</sub></i></b> : 대기압 (101,325 Pa)<br><b><i>R</i></b> : 이상기체상수 (8314 J/kmol·K)<br><b><i>S</i></b> : 유체가 누출되는 개구부(구멍)의 단면적 (m²)<br><b><i>T</i></b> : 유체, 기체 또는 액체의 절대온도 (K)<br><b><i>Z</i></b> : 압축인자(단위없음)</div>`,
+ char:`<div class="deflist">여기서, <b><i>W<sub>g</sub></i></b> : 가스 누출율 (kg/s)<br><b><i>Q<sub>g</sub></i></b> : 부피 증발율 (m³/s)<br><b><i>ρ<sub>g</sub></i></b> : 가스 또는 증기 밀도 (kg/m³)<br><b><i>k</i></b> : LFL의 안전계수<br><b>LFL</b> : 폭발 하한계 (vol/vol)</div>`
+};
+</script>
+<script>
+/* ===================== 계산서 렌더링 ===================== */
+let PG=0;
+function page(inner,cover){PG++;return `<section class="page${cover?" ":""}">${inner}<div class="pno">- ${PG} -</div></section>`}
+function matOf(s){return S.mats.find(m=>m.id===s.matId)||S.mats[0]}
+
+function renderReport(){
+  PG=0;
+  const d=S.doc;
+  let h="";
+  /* 표지 */
+  PG++;
+  h+=`<section class="page"><div class="cover"><div class="en">Calculation for Hazardous Area<br>Classification</div>
+   <div class="rule"></div><div class="dt">${esc(d.년월)}</div><div class="co">${ph(d.회사,"(사업장명)")}</div>
+   ${d.작성자?`<div style="margin-top:8mm;font-size:11pt">작성 : ${esc(d.작성자)}</div>`:""}</div></section>`;
+  /* 1. 개요 */
+  h+=page(`<h2 class="sec">1. 개 요</h2>
+   <p class="ind">${ph(d.회사,"(사업장명)")}의 ${esc(d.개요)}</p>
+   <h3 class="sub">1.2 용어 정의</h3>
+   <p class="ind"><b>1) 누출등급</b></p>${tblRelDoc()}`);
+  /* 2) 누출구멍 + 3) 희석등급 */
+  h+=page(`<p class="ind"><b>2) 누출구멍 크기 및 누출원 반경</b></p>
+   <p class="ind2">누출구멍의 반경은 인화성 물질의 누출률과 폭발위험장소의 형태 및 범위를 결정한다.</p>
+   <figure><figcaption>&lt;표 1&gt; 2차누출등급의 누출구멍 단면적(권고)</figcaption>${tblHole(-1,false,"doc tiny")}</figure>
+   <p class="ind"><b>3) 희석등급</b></p>
+   <p class="ind2">① <b>고희석</b>(High Dilution) 누출원 근처에서의 농도를 순간적으로 감소시키고 누출이 중단된 후, 사실상 지속되지 않는다.</p>
+   <p class="ind2">② <b>중희석</b>(Medium Dilution) 누출이 진행되는 동안에는 누출농도를 안정된 상태로 제어할 수 있고, 누출이 중단된 후에는 더 이상 폭발성 가스분위기가 지속되지 않는다.</p>
+   <p class="ind2">③ <b>저희석</b>(Low Dilution) 누출이 진행되는 동안에 상당한 농도로 지속되고 누출이 정지된 후에도 인화성 분위기가 상당기간 동안 지속된다.</p>`);
+  /* 희석 그래프 + 환기이용도 + 범위 그래프 */
+  h+=page(`<figure>${chartDilution(null)}</figure>
+   <p class="ind"><b>4) 환기이용도</b></p>
+   <p class="ind2">우수 : 환기가 실제적으로 지속되는 상태</p>
+   <p class="ind2">양호 : 환기의 정상작동이 지속됨이 예측되는 상태, 빈번하지 않는 단기간 중단은 허용된다.</p>
+   <p class="ind2">미흡 : 환기가 양호 또는 우수 기준을 충족하지 않지만, 장기간 중단이 발생하는 것으로 예상되지 않는 상태</p>
+   <figure>${chartExtent(null)}</figure>`);
+  /* 종별 표 + Temp class */
+  h+=page(`<p class="ind"><b>5) 폭발위험 장소의 종별의 추정</b></p>
+   <p class="ind2">폭발위험장소의 구분은 폭발성 분위기의 생성빈도와 지속시간에 따라 다음과 같이 분류한다.</p>
+   <figure><figcaption>&lt;표 1&gt; 누출 등급 및 환기유효성에 따른 폭발위험장소 설정</figcaption>${tblZone("","","",false)}</figure>
+   <p class="ind"><b>6) Temp. class</b></p>
+   <p class="ind2">폭발가스 발화온도에 의한 분류(KS C IEC 60079-14)</p>
+   ${["T1 : 450℃ 초과","T2 : 300℃ 초과","T3 : 200℃ 초과","T4 : 135℃ 초과","T5 : 100℃ 초과","T6 : 85℃ 초과"].map(t=>`<p class="ind3">${t}</p>`).join("")}`);
+  /* 2. 계산식 */
+  h+=page(`<h2 class="sec">2. 누출특성 및 희석등급 계산식</h2>
+   <h4 class="eq">액체의 누출률</h4>${EQ.liq}${DEF.liq}
+   <h4 class="eq">증발 풀의 부피증발률</h4>${EQ.pool}${DEF.pool}
+   <h4 class="eq">가스 또는 증기의 누출률</h4>
+   <p class="ind">가스 용기의 내부압력이 임계압력(Pc)보다 높다면, 누출가스의 속도는 음속(SONIC, CHOCKED)이다.</p>
+   <p class="ind"><b>1) 임계압력</b></p>${EQ.pc}
+   <div class="deflist"><b><i>P<sub>C</sub></i></b> : 임계압력 (Pa)<br><b><i>P<sub>a</sub></i></b> : 대기압 (101,325 Pa)<br><b><i>γ</i></b> : 단열팽창 폴리트로픽 지수(단위없음)</div>`);
+  h+=page(`<p class="ind"><b>2) 아음속누설(Non chocked)의 가스 누출률</b></p>${EQ.nonchoked}${DEF.gas}
+   <p class="ind"><b>3) 음속누설(Chocked)의 가스 누출량</b></p>${EQ.choked}${DEF.gas}`);
+  h+=page(`<h4 class="eq">누출특성</h4>${EQ.char}${DEF.char}
+   <h2 class="sec" style="margin-top:18px">3. 폭발장소의 구분</h2>
+   <figure>${zoneHatchSvg()}</figure>`);
+  /* 4. 데이터시트 */
+  h+=page(`<h2 class="sec">4. 폭발 위험 장소 구분 데이터 시트</h2>
+   <h3 class="sub">4.1 위험성물질의 목록 및 특성</h3>
+   ${String(d.물질비고||"").trim()?`<p class="ind" style="font-size:9.5pt">1) ${esc(d.물질비고)}</p>`:""}
+   <p style="font-size:9pt;margin-top:10px">Explosion Area Classification Data Sheet – Part 1 : Flammable material list and Characteristics</p>
+   <p style="font-size:9pt">Plant Name : ${ph(d.회사,"(사업장명)")}<br>Plant Location : ${ph(d.소재지,"(소재지)")}</p>
+   ${part1Table()}`);
+  h+=page(`<h3 class="sub">4.2 누출원 목록</h3>
+   <p style="font-size:9pt">Explosion Area Classification Data Sheet – Part 2 : List of source of release</p>
+   <p style="font-size:9pt">Plant Name : ${ph(d.회사,"(사업장명)")}<br>Plant Location : ${ph(d.소재지,"(소재지)")}</p>
+   ${part2Table()}
+   <div style="font-size:8.5pt;margin-top:6px;line-height:1.6">
+   a) C-연속, S-2차, P-1차<br>b) 1부 목록 인용번호<br>c) G-가스, L-액체, LG-액화 가스, S-고체<br>
+   d) N-자연환기, A-강제환기, AG-강제 전체 환기, AL-국소 배기<br>e) 부속서 C 참조<br>
+   f) 사용된 코드/표준번호, 계산기준 표시(G-우수, F-양호, P-미흡)</div>`);
+  /* 설비별 계산 */
+  S.srcs.forEach((s,i)=>{h+=srcPages(s,i)});
+  $("#report").innerHTML=h;
+}
+function ph(v,alt){return (v!=null&&String(v).trim())?esc(v):`<span style="color:#9aa3ab">${alt}</span>`}
+function esc(t){return String(t==null?"":t).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]))}
+
+function part1Table(){
+  let h=`<table class="doc tiny"><tr>
+   <th rowspan="2">NO.</th><th colspan="3">Flammable Material</th><th rowspan="2">비중<br>(가스/공기)</th><th rowspan="2">단열팽창<br>폴리트로프<br>지수</th>
+   <th colspan="4">Volatility</th><th rowspan="2">인화 하한 값<br>(LFL)<br>vol %</th><th colspan="2">방폭 특성</th><th rowspan="2">비고<br>(기타관련정보)</th></tr>
+   <tr><th>물질명</th><th>분자식</th><th>분자량<br>kg/kmol</th><th>인화점<br>℃</th><th>발화점<br>℃</th><th>비점<br>℃</th><th>증기압<br>20℃ kPa</th><th>기기<br>그룹</th><th>온도<br>등급</th></tr>`;
+  S.mats.forEach((m,i)=>{
+    h+=`<tr><td>${i+1}</td><td>${esc(m.명칭)}</td><td>${esc(m.식)}</td><td>${m.M}</td><td>${m.비중}</td><td>${m.gamma}</td>
+    <td>${m.인화점}</td><td>${m.발화점}</td><td>${m.비점}</td><td>${m.Pv}</td><td>${m.LFL}</td><td>${esc(m.그룹)}</td><td>${esc(m.온도)}</td>
+    <td>${esc(m.비고||("Cas no. "+m.CAS))}</td></tr>`;});
+  return h+`</table>`;
+}
+function part2Table(){
+  let h=`<table class="doc tiny"><tr>
+  <th rowspan="2">NO.</th><th colspan="3">누출원</th><th colspan="5">인화성 물질</th><th colspan="4">환기</th><th colspan="3">폭발위험장소</th><th rowspan="2">비고</th></tr>
+  <tr><th>설비명</th><th>위치</th><th>누출<br>등급<sup>a)</sup></th><th>누출량<br>(kg/s)</th><th>누출특성<br>(m³/s)</th><th>참조<sup>b)</sup></th><th>운전온도<br>(℃)</th><th>운전압력</th>
+  <th>상태<sup>c)</sup></th><th>형태<sup>d)</sup></th><th>희석등급<sup>e)</sup></th><th>이용도<sup>f)</sup></th><th>위험장소<br>종별</th><th>수평<br>(m)</th><th>수직<br>(m)</th></tr>`;
+  S.srcs.forEach((s,i)=>{
+    const m=matOf(s),r=calcSrc(s,m);
+    const gr={"연속":"C","1차":"P","2차":"S"}[s.등급];
+    const ut={"우수":"G","양호":"F","미흡":"P"}[r.이용도]||"P";
+    const amt=s.상태==="liquid"&&s.poolMode==="tank"?`${num(r.Qg,3)}<br>(m³/s)`:num(s.상태==="liquid"?r.W:r.Wg,3);
+    h+=`<tr><td>${i+1}</td><td>${esc(s.설비명)}</td><td>${esc(s.위치)}</td><td>${gr}</td><td>${amt}</td><td>${num(r.C,2)}</td>
+    <td>${S.mats.indexOf(m)+1}</td><td>${s.Top==25?"AMB":s.Top}</td><td>${esc(s.운전압력)}</td>
+    <td>${s.상태==="liquid"?"L":"G"}</td><td>${s.위치==="옥내"?"A":"N"}</td><td>${r.희석}</td><td>${ut}</td>
+    <td>${r.zone}</td><td>${s.수평}</td><td>${s.수직}</td><td>${esc(s.비고)}</td></tr>`;});
+  return h+`</table>`;
+}
+
+/* --------- 설비별 계산 페이지 --------- */
+function srcPages(s,idx){
+  const m=matOf(s), r=calcSrc(s,m);
+  const liq=s.상태==="liquid", spill=liq&&s.poolMode==="spill";
+  const hasHole = !liq || spill;
+  let n=0; const N=()=>CIRC[n++];
+  const title=`<h3 class="sub" style="margin-top:0">- ${esc(s.설비명)}${s.설명?`(${esc(s.설명)})`:""}</h3>`;
+  let h="";
+  /* 페이지 A : 물질특성/환기조건 + 안전계수 + 환기속도 + 환기이용도 */
+  h+=page(`${idx===0?`<p style="font-size:10pt;margin-bottom:6px"><b>2) 폭발위험지역 계산결과</b></p>`:""}
+   ${title}
+   <p class="item">${N()} 물질특성 및 환기조건</p>
+   <table class="spec"><tr><th colspan="2">Characteristics of release</th><th colspan="2">Ventilation characteristics</th></tr>
+   <tr><td class="k">Material</td><td>${esc(m.명칭==="톨루엔"?"Toluene":m.명칭)}</td><td class="k">Location</td><td>${s.위치==="옥내"?"indoor":"outdoor"}</td></tr>
+   <tr><td class="k">Phase</td><td>${liq?"L":"G"}</td><td class="k">Ventilation speed</td><td>${s.uw} m/s</td></tr>
+   <tr><td class="k">Molecular mass</td><td>${m.M} kg/kmol</td><td class="k">Ambient temperature</td><td>${s.Ta} ℃</td></tr>
+   <tr><td class="k">Leakage<br>cross-sectional area</td><td>${trim((+s.S/1e6).toFixed(9))} m²</td><td class="k">Operating temperature</td><td>${s.Top} ℃</td></tr>
+   <tr><td class="k">Source of release</td><td>${ph(s.누출원,"-")}</td><td class="k">Operating pressure</td><td>${esc(s.운전압력)}</td></tr>
+   <tr><td class="k">Lower explosion limit(LEL)</td><td>${m.LFL} %</td><td class="k">Ventilation utilization<br>(G(우수), F(양호), P(미흡))</td><td>${({"우수":"G","양호":"F","미흡":"P"})[r.이용도]||"P"}</td></tr>
+   <tr><td class="k">LEL Safety factor (k)</td><td>${s.k}<br><span style="font-size:8pt">(k=${s.k}: ${esc(s.k근거)})</span></td><td class="k">Ventilation type<br>(N(자연환기), A(강제환기))</td><td>${s.위치==="옥내"?"A":"N"}</td></tr>
+   <tr><td class="k">누출계수(Cd)</td><td>${s.Cd}</td><td class="k">누출등급</td><td>${s.등급}</td></tr></table>
+   ${String(s.등급근거||"").trim()?`<p class="ind" style="font-size:9.5pt">누출등급 판정근거 : ${esc(s.등급근거)}</p>`:""}
+   <p style="font-size:9.5pt;color:#1546a0;font-weight:700;margin-top:8px">∎ 안전 계수 결정 (K)</p>
+   ${tblK(s.k,false,"doc")}
+   <p class="item">${N()} 환기속도 : <span class="orange">${s.uw} m/s</span></p>
+   <figure><figcaption>&lt;표 1&gt; 옥외 환기속도(u<sub>w</sub>)</figcaption>${tblUwDoc(s.uw)}</figure>
+   ${String(s.uw근거||"").trim()?`<p style="font-size:9.5pt" class="ind">근거 : ${esc(s.uw근거)}</p>`:""}
+   <p class="item">${N()} 환기이용도 : <span class="orange">${esc(s.이용도==="직접입력"?s.이용도직접:s.이용도)}</span></p>
+   <p class="ind2" style="font-size:9.5pt">(${r.이용도} : ${({"우수":"환기가 실제적으로 지속되는 상태","양호":"환기의 정상작동이 지속됨이 예측되는 상태, 빈번하지 않는 단기간 중단은 허용된다.","미흡":"환기가 양호 또는 우수 기준을 충족하지 않지만, 장기간 중단이 예상되지 않는 상태"})[r.이용도]})</p>`);
+  /* 페이지 B : 누출구멍 단면적 */
+  if(hasHole){
+    h+=page(`${title}<p class="item">${N()} ${s.등급==="2차"?"2차 누출등급에서의 ":""}누출 구멍 단면적(권고) : <span class="orange">${s.S}mm²</span></p>
+     <figure><figcaption>&lt;표 1&gt; 2차누출등급의 누출구멍 단면적(권고)</figcaption>${tblHole(s.S,false,"doc tiny")}</figure>
+     ${String(s.S근거||"").trim()?`<p class="ind" style="font-size:9.5pt">적용근거 : ${esc(s.S근거)}</p>`:""}`);
+  }
+  /* 페이지 C : 누출률/증발률 */
+  h+=page(`${title}${liq?liqCalc(s,m,r,N()):gasCalc(s,m,r,N())}`);
+  /* 페이지 D : 누출특성 + 희석등급 */
+  const dilTxt = s.희석모드==="auto"
+    ? `희석등급 평가차트에 따라 <span class="orange">${r.희석}</span>으로 판단함.`
+    : `희석등급 평가차트에 따라 ${r.희석auto}이지만, ${esc(s.희석근거||"설비특성상")} <span class="orange">${s.희석수동}</span>으로 판단함.`;
+  h+=page(`${title}
+   <p class="item">${N()} 누출 특성 = <span class="orange">${num(r.C,2)} m³/s</span></p>
+   <p class="ind">⑴ 계산식</p>${EQ.char}${DEF.char}
+   <p class="ind">⑵ 단계별 계산</p>
+   <div class="calc">가. <i>Q<sub>g</sub></i> = ${sci(r.Qg,3)}<br>
+   &nbsp;&nbsp;&nbsp;&nbsp;<i>k</i> = ${s.k} (${esc(s.k근거)})<br>
+   &nbsp;&nbsp;&nbsp;&nbsp;LFL = ${trim((m.LFL/100).toFixed(5))}<br>
+   <span class="arrow">→ 누출특성 = ${sci(r.Qg,3)} / (${s.k} × ${trim((m.LFL/100).toFixed(5))}) = <span class="res">${num(r.C,2)} m³/s</span></span></div>
+   <p class="item">${N()} ${dilTxt}</p>
+   <figure>${chartDilution(r)}</figure>
+   <p class="ind" style="font-size:9.5pt">판독 : 누출특성 ${num(r.C,2)} m³/s, 환기속도 ${s.uw} m/s 교차점 → 고희석 경계선 u<sub>w</sub>=${num(r.bHi,3)} m/s, 저희석 경계선 u<sub>w</sub>=${num(r.bLo,3)} m/s</p>`);
+  /* 페이지 E : 범위 */
+  h+=page(`${title}
+   <p class="item">${N()} 폭발위험지역 범위 추정차트에 따라 폭발위험지역 장소의 범위(반경)는 <span class="orange">${s.범위모드==="auto"?r.범위:s.범위수동}m</span> 이다.</p>
+   ${r.NE?`<div style="border:1px solid #c00;padding:6px 8px;font-size:9.5pt;color:#c00;margin-bottom:6px">
+     ※ 판정 결과가 NE(무시할 수 있는 범위)이므로 지침 &lt;표 1&gt; 비고 a에 따라 정상조건에서 무시될 수 있는 이론적 폭발위험장소이다. 아래 차트는 참고용이다.</div>`:""}
+   <figure>${chartExtent(r,s.누출형태)}</figure>
+   <p class="ind" style="font-size:9.5pt">적용곡선 : ${s.누출형태} / 계산값 r = ${num(r.rRaw,3)} m
+   ${r.belowChart?` → 차트 하한(1 m) 미만이므로 보수적으로 <b>1 m</b> 적용`:""}</p>
+   <p class="ind" style="font-size:9.5pt">수평범위 ${s.수평} m, 수직범위 ${s.수직} m 를 도면에 반영한다.</p>
+   ${r.msg.length?`<div style="border-left:3px solid #e2620d;padding:4px 8px;font-size:9pt;margin-top:8px">${r.msg.map(x=>"※ "+x).join("<br>")}</div>`:""}`);
+  /* 페이지 F : 종별 판정 */
+  h+=page(`${title}
+   <p class="item">${N()} 폭발위험장소의 종별 판정표에 따라 <span class="orange">${r.zone==="비위험"?"비위험 장소":r.zone+" 장소"}</span>이다.</p>
+   <figure><figcaption>&lt;표 1&gt; 누출 등급 및 환기유효성에 따른 폭발위험장소 설정</figcaption>${tblZone(s.등급,r.희석,r.이용도,true)}</figure>
+   <div class="sumbox"><div class="lft">
+     <div>희석등급</div><div>${r.희석}</div>
+     <div>가스종류</div><div>${+m.비중>=1?"무거운가스":"가벼운가스"}</div>
+     <div>폭발위험장소 유형</div><div>${r.zone}</div>
+     <div>기기 그룹 및 온도 등급</div><div>${esc(m.그룹)} ${esc(m.온도)}</div>
+     <div>계산거리(반경)</div><div>${s.수평}m</div>
+   </div><div class="rgt">※ 폭발위험지역의 추정<br>
+     환기유효성 ${r.희석}, 환기등급 ${r.이용도}으로 위험장소구분 기준으로 ${r.zone} 장소이며,<br>
+     위험성을 고려하여 장치로부터 ${s.수평}m를 ${r.zone} 장소로 구분함.</div></div>`);
+  return h;
+}
+function liqCalc(s,m,r,cn){
+  const spill=s.poolMode==="spill";
+  const S6=trim((+s.S/1e6).toFixed(9));
+  return `<p class="item">${cn} 액체 부피 증발률(<i>Q<sub>g</sub></i>) = <span class="orange">${sci(r.Qg,3)} m³/s</span></p>
+  <p class="ind">⑴ 계산식</p>${EQ.pool}${DEF.pool}
+  <p class="ind">⑵ 단계별 계산</p>
+  <p class="ind2"><b>가. 풀 표면적(<i>A<sub>p</sub></i>)</b></p>
+  ${spill?`<p class="ind2" style="color:#1546a0;font-size:9.5pt">* 지침 : 용기에서 흘러나오는 액체는 즉시 1cm 깊이의 풀(Pool)로써 평평한 표면을 형성하고 대기 조건에서 증발된다고 가정.</p>
+  ${EQ.ap}
+  <div class="deflist">여기서, <b><i>W</i></b> : 액체의 누출율 (kg/s)<br><b><i>t</i></b> : 누출시간 (${s.t}s) — KOSHA GUIDE P-107-2020를 참고하여 가장 보수적으로 누출시간을 적용함.<br>
+  <b><i>C<sub>d</sub></i></b> : 누출계수 (단위 없음), 일반적으로 모난 오리피스는 0.5~0.75 (여기서는 ${s.Cd}로 가정)<br>
+  <b><i>S</i></b> : 유체가 누출되는 개구부(구멍)의 단면적 (m²)<br><b><i>ρ</i></b> : 액체 밀도 (kg/m³)<br><b>Δ<i>P</i></b> : 개구부에서의 누설 압력 차 (Pa)</div>
+  <div class="calc">
+  Δ<i>P</i> = <i>ρ</i> × <i>g</i> × <i>h</i> ${s.dPmode==="head"?`(<i>h</i> = ${s.h} m 로 가정함)`:"(직접 입력)"}<br>
+  ${s.dPmode==="head"?`&nbsp;&nbsp;&nbsp;= ${m.rho} kg/m³ × 9.8 m/sec² × ${s.h} m = ${fx(r.dP,2)} kg/(m·s²) ≈ ${Math.round(r.dP).toLocaleString()} Pa`:`&nbsp;&nbsp;&nbsp;= ${Math.round(r.dP).toLocaleString()} Pa`}<br>
+  ∴ <i>W</i> = ${s.Cd} × ${S6} × √(2 × ${m.rho} × ${Math.round(r.dP)}) = <span class="res">${num(r.W,4)} kg/s</span><br>
+  &nbsp;&nbsp;<i>V</i><sub>누출</sub> = ${num(r.W,4)} × ${s.t} / ${m.rho} = <span class="res">${num(r.V,3)} m³</span><br>
+  &nbsp;&nbsp;<i>A<sub>p</sub></i> = ${num(r.V,3)} / 0.01 = <span class="res">${num(r.Ap,4)} m²</span></div>`
+  :`<p class="ind2" style="color:#1546a0;font-size:9.5pt">* 탱크에 저장된 물질의 액표면 면적(탱크 단면적) 적용 — 대기와 연결된 통기구가 설치된 고정지붕 탱크 내부의 인화성 액체 표면</p>
+  <div class="calc"><i>A<sub>p</sub></i> = <span class="frac"><span>π × ${s.D}²</span><span class="den">4</span></span> = <span class="res">${num(r.Ap,4)} m²</span> &nbsp;(탱크 내경 D = ${s.D} m)</div>`}
+  <div class="calc" style="margin-top:8px">
+  <span class="arrow">→ <i>Q<sub>g</sub></i> = <span class="frac"><span>6.5 × ${r.uwPool}<sup>0.78</sup> × ${num(r.Ap,4)} × ${m.Pv}</span><span class="den">10<sup>5</sup> × ${m.M}<sup>0.333</sup></span></span>
+   × <span class="frac"><span>${fx(r.Ta,2)}</span><span class="den">${fx(r.Top,2)}</span></span> = <span class="res">${sci(r.Qg,3)} m³/s</span></span></div>
+  <p class="ind2" style="font-size:9pt">※ 풀 증발률 산정용 환기속도 u<sub>w</sub> = ${r.uwPool} m/s ${s.uwLink?"(희석등급 판정용과 동일 적용)":"(&lt;표 1&gt; 액체 풀 증발률 행 적용)"}</p>`;
+}
+function gasCalc(s,m,r,cn){
+  const S6=trim((+s.S/1e6).toFixed(9));
+  return `<p class="item">${cn} 가스 누출률(<i>W<sub>g</sub></i>) = <span class="orange">${num(r.Wg,3)} kg/s</span></p>
+  <p class="ind">⑴ 임계압력 판정</p>${EQ.pc}
+  <div class="calc"><i>P<sub>C</sub></i> = 101,325 × [(${m.gamma}+1)/2]<sup>${m.gamma}/(${m.gamma}−1)</sup> = <span class="res">${Math.round(r.Pc).toLocaleString()} Pa</span><br>
+  용기 내부압력 <i>P</i> = ${Math.round(r.P).toLocaleString()} Pa ${r.choked?"≥":"&lt;"} <i>P<sub>C</sub></i> → <span class="res">${r.choked?"음속누설(Chocked)":"아음속누설(Non chocked)"}</span></div>
+  <p class="ind">⑵ 가스 누출률</p>${r.choked?EQ.choked:EQ.nonchoked}${DEF.gas}
+  <div class="calc">∴ <i>W<sub>g</sub></i> = ${s.Cd} × ${S6} × ${Math.round(r.P).toLocaleString()} × √(…) = <span class="res">${num(r.Wg,3)} kg/s</span>
+  &nbsp;<span style="font-size:8.5pt">(M=${m.M}, γ=${m.gamma}, T=${s.T_gas}K, Z=1, R=8314)</span></div>
+  <p class="ind">⑶ 가스(증기) 밀도</p>
+  <div class="calc"><i>ρ<sub>g</sub></i> = <span class="frac"><span><i>P<sub>a</sub></i> × <i>M</i></span><span class="den"><i>R</i> × <i>T<sub>a</sub></i></span></span>
+   = (101,325 × ${m.M}) / (8314 × ${fx(r.Ta,2)}) = <span class="res">${num(r.rho_g,4)} kg/m³</span><br>
+  &nbsp;&nbsp;<i>Q<sub>g</sub></i> = <i>W<sub>g</sub></i> / <i>ρ<sub>g</sub></i> = <span class="res">${sci(r.Qg,3)} m³/s</span></div>`;
+}
+</script>
+<script>
+/* ===================== 입력 패널 ===================== */
+function F(label,path,type,attrs){
+  const v=getPath(path);
+  return `<label class="f"><span>${label}</span><input type="${type||"text"}" data-path="${path}" ${type==="number"?'step="any"':""} value="${v==null?"":String(v).replace(/"/g,"&quot;")}" ${attrs||""}></label>`;
+}
+function Sel(label,path,opts){
+  const v=getPath(path);
+  return `<label class="f"><span>${label}</span><select data-path="${path}" data-live="1">${opts.map(o=>`<option value="${o}" ${o===v?"selected":""}>${o}</option>`).join("")}</select></label>`;
+}
+function getPath(p){const a=p.split(".");
+  let o = a[0]==="doc"?S.doc : a[0]==="mat"?S.mats[S.selMat] : a[0]==="src"?S.srcs[S.selSrc] : null;
+  return o?o[a[1]]:null;}
+function setPath(p,val){const a=p.split(".");
+  let o = a[0]==="doc"?S.doc : a[0]==="mat"?S.mats[S.selMat] : a[0]==="src"?S.srcs[S.selSrc] : null;
+  if(o) o[a[1]]=val;}
+
+function renderPanes(){renderDocPane();renderMatPane();renderSrcPane();renderReport()}
+
+function renderDocPane(){
+  $("#pane-doc").innerHTML=`
+  <fieldset><legend>문서 정보</legend>
+    ${F("사업장명","doc.회사","text",'placeholder="예) ○○산업(주)"')}
+    ${F("사업장 소재지","doc.소재지","text",'placeholder="예) 경기도 ○○시 ○○동 000-0"')}
+    <div class="row">${F("작성 연월","doc.년월")}${F("작성자","doc.작성자")}</div>
+    <label class="f"><span>개요 문구 <em>(사업장명 뒤에 이어짐)</em></span><textarea data-path="doc.개요">${esc(S.doc.개요)}</textarea></label>
+    <label class="f"><span>물질 선정 비고 <em>(비우면 계산서에 표시되지 않음)</em></span><textarea data-path="doc.물질비고" placeholder="예) 취급 물질은 다양하나 폭발하한과 인화점이 가장 낮은 ○○○로 통일하여 보수적으로 검토함.">${esc(S.doc.물질비고)}</textarea></label>
+  </fieldset>
+  <div class="readout"><h4>출력 순서</h4>
+   <div style="font-size:11.5px;line-height:1.9;color:var(--ink-2)">
+   표지 → 1. 개요·용어정의 → 2. 계산식 → 3. 폭발장소 구분 → 4.1 물질목록(Part 1) → 4.2 누출원목록(Part 2) → 설비별 계산결과(①~⑨)</div>
+   <p class="hint" style="margin-top:8px">PDF 다운로드를 누르면 인쇄 대화상자가 열립니다.<br>대상 <b>PDF로 저장</b> · 용지 <b>A4</b> · 배율 <b>기본(100%)</b> · 배경 그래픽 <b>켬</b>.<br>여백은 기본/없음 어느 쪽이어도 맞게 출력됩니다. 배율만 "맞춤설정"이 아닌 <b>기본</b>인지 확인하세요.</p>
+  </div>`;
+}
+function renderMatPane(){
+  const m=S.mats[S.selMat];
+  let h=`<div class="chips">${S.mats.map((x,i)=>`<button class="chip ${i===S.selMat?"on":""}" data-act="selmat" data-v="${i}">${esc(x.명칭)}</button>`).join("")}
+   <button class="chip add" data-act="addmat">+ 물질</button></div>`;
+  if(m){
+  h+=`<fieldset><legend>물질 특성 (Part 1)</legend>
+   <label class="f"><span>프리셋 불러오기</span><select data-act="preset"><option value="">— 선택 —</option>${Object.keys(MAT_LIB).map(k=>`<option>${k}</option>`).join("")}</select></label>
+   <div class="row">${F("물질명","mat.명칭")}${F("분자식","mat.식")}</div>
+   <div class="row r3">${F("분자량 M","mat.M","number")}${F("액체밀도 ρ","mat.rho","number")}${F("비중(가스/공기)","mat.비중","number")}</div>
+   <div class="row r3">${F("증기압 Pv(kPa)","mat.Pv","number")}${F("LFL(vol%)","mat.LFL","number")}${F("폴리트로프 γ","mat.gamma","number")}</div>
+   <div class="row r3">${F("인화점(℃)","mat.인화점")}${F("발화점(℃)","mat.발화점")}${F("비점(℃)","mat.비점")}</div>
+   <div class="row r3">${F("기기그룹","mat.그룹")}${F("온도등급","mat.온도")}${F("CAS No.","mat.CAS")}</div>
+   ${F("비고","mat.비고")}
+   <button class="mini danger" data-act="delmat">이 물질 삭제</button>
+  </fieldset>`;}
+  $("#pane-mat").innerHTML=h;
+}
+function renderSrcPane(){
+  const s=S.srcs[S.selSrc]; if(!s){$("#pane-src").innerHTML="";return}
+  const m=matOf(s), r=calcSrc(s,m), liq=s.상태==="liquid";
+  let h=`<div class="chips">${S.srcs.map((x,i)=>`<button class="chip ${i===S.selSrc?"on":""}" data-act="selsrc" data-v="${i}">${esc(x.설비명)}</button>`).join("")}
+   <button class="chip add" data-act="addsrc">+ 누출원</button></div>
+   <div style="display:flex;gap:6px;margin-bottom:12px"><button class="mini" data-act="copysrc">복제</button><button class="mini danger" data-act="delsrc">삭제</button></div>`;
+
+  h+=`<div class="readout"><h4>계산 결과</h4><dl>
+   ${liq?`<dt>액체 누출률 W</dt><dd>${num(r.W,4)} kg/s</dd>
+     <dt>풀 표면적 Ap</dt><dd>${num(r.Ap,4)} m²</dd>`
+    :`<dt>임계압력 Pc</dt><dd>${num(r.Pc,4)} Pa</dd>
+     <dt>가스 누출률 Wg</dt><dd>${num(r.Wg,3)} kg/s</dd>`}
+   <dt>부피증발률 Qg</dt><dd>${num(r.Qg,3)} m³/s</dd>
+   <dt><b>누출특성</b></dt><dd><b>${num(r.C,3)} m³/s</b></dd>
+   <dt>희석등급 (차트)</dt><dd>${r.희석auto}${s.희석모드!=="auto"?` → <b>${r.희석}</b>`:""}</dd>
+   <dt>폭발위험장소</dt><dd><span class="tag ${zoneClass(r.zone)}">${r.zone}</span></dd>
+   <dt>범위(차트) r</dt><dd>${num(r.rRaw,3)} m → ${r.범위} m</dd></dl>
+   ${r.msg.map(x=>`<div class="warn">${x}</div>`).join("")}</div>`;
+
+  h+=`<fieldset><legend>누출원 개요</legend>
+   <div class="row">${F("설비명(태그)","src.설비명","text",'placeholder="예) TM-01~05"')}${F("설비 설명","src.설명","text",'placeholder="예) TANK MIXER"')}</div>
+   <div class="row">${F("누출원 부위","src.누출원","text",'placeholder="예) 하단 밸브"')}${Sel("위치","src.위치",["옥내","옥외"])}</div>
+   <label class="f"><span>취급물질</span><select data-act="setmat">${S.mats.map(x=>`<option value="${x.id}" ${x.id===s.matId?"selected":""}>${esc(x.명칭)}</option>`).join("")}</select></label>
+   <div class="row r3">${F("주위온도 Ta(℃)","src.Ta","number")}${F("운전온도 T(℃)","src.Top","number")}${F("운전압력 표기","src.운전압력")}</div>
+   ${F("비고","src.비고")}
+  </fieldset>`;
+
+  h+=`<fieldset><legend>① 누출등급 — 표에서 선택</legend>
+   ${tblRelease(s.등급,true)}
+   <label class="f" style="margin-top:8px"><span>판정 근거</span><textarea data-path="src.등급근거" placeholder="예) 정상작동 중 인화성 물질의 누출이 예상되지 않는 밸브 밀봉부(지침 5.3.1 2차 누출등급 ①)">${esc(s.등급근거)}</textarea></label>
+  </fieldset>`;
+
+  h+=`<fieldset><legend>② 누출 조건</legend>
+   <label class="f"><span>상태</span><select data-path="src.상태" data-live="1"><option value="liquid" ${liq?"selected":""}>액체 (Liquid)</option><option value="gas" ${!liq?"selected":""}>가스/증기 (Gas)</option></select></label>
+   <div class="row">${F("누출계수 Cd","src.Cd","number")}${F("누출구멍 단면적 S(㎟)","src.S","number")}</div>
+   <details><summary style="cursor:pointer;font-size:11.5px;color:var(--blue);font-weight:600;margin-bottom:6px">&lt;표 1&gt; 2차누출등급 누출구멍 단면적 표에서 선택</summary>${tblHole(s.S,true)}</details>
+   ${F("S 적용근거","src.S근거","text",'placeholder="예) 저속 가동 부품류 – 밸브 스템 패킹(부식 등에 의해 확대될 수 있는 조건)"')}`;
+  if(liq){
+    h+=`<label class="f"><span>풀(Pool) 산정방식</span><select data-path="src.poolMode" data-live="1">
+      <option value="spill" ${s.poolMode==="spill"?"selected":""}>유출풀 (누출액이 1cm 깊이 풀 형성)</option>
+      <option value="tank" ${s.poolMode==="tank"?"selected":""}>탱크 액표면 (지하저장조·고정지붕탱크 단면적)</option></select></label>`;
+    if(s.poolMode==="tank"){h+=F("탱크 내경 D(m)","src.D","number");}
+    else{
+      h+=`<div class="row">${F("누출시간 t(s)","src.t","number")}
+      <label class="f"><span>ΔP 산정</span><select data-path="src.dPmode" data-live="1"><option value="head" ${s.dPmode==="head"?"selected":""}>액주높이 h</option><option value="given" ${s.dPmode!=="head"?"selected":""}>직접입력</option></select></label></div>
+      ${s.dPmode==="head"?F("액주높이 h(m)","src.h","number"):F("ΔP (Pa)","src.dP","number")}
+      <p class="hint">ΔP = ρ·g·h = ${num(r.dP,5)} Pa</p>`;
+    }
+  }else{
+    h+=`<div class="row">${F("용기 내부압력 P(MPa abs)","src.P_MPa","number")}${F("유체 절대온도 T(K)","src.T_gas","number")}</div>
+    <p class="hint">γ 는 물질 탭에서 설정합니다. 현재 γ = ${m?m.gamma:"-"}</p>`;
+  }
+  h+=`</fieldset>`;
+
+  h+=`<fieldset><legend>③ 안전계수 k — 표에서 선택</legend>${tblK(s.k,true)}</fieldset>`;
+
+  h+=`<fieldset><legend>④ 환기속도 — 표에서 선택</legend>
+   <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px">
+     <button class="mini" data-act="uw" data-v="0.05">옥내 0.05 m/s 적용</button>
+     <span style="font-size:11px;color:var(--ink-3)">옥내는 최소 0.05 m/s 가정</span></div>
+   ${tblUw(s.uw,true)}
+   <div class="row">${F("환기속도 u<sub>w</sub> (m/s)","src.uw","number")}
+   <label class="f"><span>풀 증발률용 u<sub>w</sub></span>
+    <select data-path="src.uwLink" data-live="1" data-type="bool"><option value="true" ${s.uwLink?"selected":""}>동일값 사용</option><option value="false" ${!s.uwLink?"selected":""}>별도 적용</option></select></label></div>
+   ${s.uwLink?"":F("풀 증발률용 u<sub>w</sub> (m/s)","src.uwPool","number")}
+   ${F("환기속도 선정근거","src.uw근거")}
+  </fieldset>`;
+
+  h+=`<fieldset><legend>⑤ 환기이용도 · 희석등급</legend>
+   ${Sel("환기이용도","src.이용도",["우수","양호","미흡","직접입력"])}
+   ${s.이용도==="직접입력"?`${F("표기할 문구","src.이용도직접")}${Sel("판정표 적용 등급","src.이용도적용",["우수","양호","미흡"])}`:""}
+   ${Sel("희석등급 판정","src.희석모드",["auto","manual"]).replace(">auto<",">차트 자동판정<").replace(">manual<",">수동 지정<")}
+   ${s.희석모드==="manual"?`${Sel("적용 희석등급","src.희석수동",["고희석","중희석","저희석"])}${F("사유(예: 설비특성상)","src.희석근거")}`:""}
+  </fieldset>`;
+
+  h+=`<fieldset><legend>⑥ 범위(거리) 산정</legend>
+   ${Sel("누출형태 (범위곡선)","src.누출형태",["무거운가스","저속확산","고속제트"])}
+   ${Sel("범위 적용","src.범위모드",["auto","manual"]).replace(">auto<",">차트 자동판독<").replace(">manual<",">직접 지정<")}
+   ${s.범위모드==="manual"?F("적용 범위(m)","src.범위수동","number"):`<p class="hint">차트 판독값 : ${r.범위} m</p>`}
+   <div class="row">${F("도면 수평범위(m)","src.수평","number")}${F("도면 수직범위(m)","src.수직","number")}</div>
+  </fieldset>`;
+  $("#pane-src").innerHTML=h;
+}
+
+/* ===================== 이벤트 ===================== */
+document.addEventListener("input",e=>{
+  const el=e.target, p=el.dataset.path; if(!p)return;
+  let v=el.value;
+  if(el.type==="number")v=v===""?"":parseFloat(v);
+  if(el.dataset.type==="bool")v=(v==="true");
+  setPath(p,v);
+  if(el.tagName==="SELECT"||el.dataset.live){renderSrcPane();renderMatPane()}
+  renderReport();
+  if(el.tagName!=="SELECT"&&!el.dataset.live){syncSide()}
+});
+function syncSide(){
+  const s=S.srcs[S.selSrc];if(!s)return;
+  const m=matOf(s),r=calcSrc(s,m);
+  const box=$("#pane-src .readout");
+  if(box){const tmp=document.createElement("div");
+    tmp.innerHTML=`<div class="readout">${box.innerHTML}</div>`;}
+  // 결과 박스만 갱신
+  const pane=$("#pane-src");
+  const old=pane.querySelector(".readout");
+  if(old){
+    const liq=s.상태==="liquid";
+    old.innerHTML=`<h4>계산 결과</h4><dl>
+     ${liq?`<dt>액체 누출률 W</dt><dd>${num(r.W,4)} kg/s</dd><dt>풀 표면적 Ap</dt><dd>${num(r.Ap,4)} m²</dd>`
+      :`<dt>임계압력 Pc</dt><dd>${num(r.Pc,4)} Pa</dd><dt>가스 누출률 Wg</dt><dd>${num(r.Wg,3)} kg/s</dd>`}
+     <dt>부피증발률 Qg</dt><dd>${num(r.Qg,3)} m³/s</dd>
+     <dt><b>누출특성</b></dt><dd><b>${num(r.C,3)} m³/s</b></dd>
+     <dt>희석등급 (차트)</dt><dd>${r.희석auto}${s.희석모드!=="auto"?` → <b>${r.희석}</b>`:""}</dd>
+     <dt>폭발위험장소</dt><dd><span class="tag ${zoneClass(r.zone)}">${r.zone}</span></dd>
+     <dt>범위(차트) r</dt><dd>${num(r.rRaw,3)} m → ${r.범위} m</dd></dl>
+     ${r.msg.map(x=>`<div class="warn">${x}</div>`).join("")}`;
+  }
+}
+document.addEventListener("change",e=>{
+  const a=e.target.dataset.act;
+  if(a==="preset"){const k=e.target.value;if(!k)return;
+    const b=MAT_LIB[k];const m=S.mats[S.selMat];
+    Object.assign(m,{명칭:k,식:b.식,M:b.M,rho:b.rho,비중:b.비중,gamma:b.gamma,인화점:b.인화점,발화점:b.발화점,비점:b.비점,Pv:b.Pv,LFL:b.LFL,그룹:b.그룹,온도:b.온도,CAS:b.CAS});
+    renderPanes();}
+  if(a==="setmat"){S.srcs[S.selSrc].matId=e.target.value;renderSrcPane();renderReport();}
+});
+document.addEventListener("click",e=>{
+  const b=e.target.closest("[data-act]"); if(!b)return;
+  const a=b.dataset.act, v=b.dataset.v;
+  const s=S.srcs[S.selSrc];
+  switch(a){
+    case"selmat":S.selMat=+v;renderMatPane();break;
+    case"addmat":S.mats.push(newMat("톨루엔"));S.selMat=S.mats.length-1;renderPanes();break;
+    case"delmat":if(S.mats.length<2){alert("물질은 최소 1개 필요합니다.");break}
+      {const id=S.mats[S.selMat].id;S.mats.splice(S.selMat,1);S.selMat=0;
+       S.srcs.forEach(x=>{if(x.matId===id)x.matId=S.mats[0].id});renderPanes();}break;
+    case"selsrc":S.selSrc=+v;renderSrcPane();break;
+    case"addsrc":{const n=newSrc();n.matId=S.mats[0].id;n.설비명="신규-"+(S.srcs.length+1);S.srcs.push(n);S.selSrc=S.srcs.length-1;renderPanes();}break;
+    case"copysrc":{const n=JSON.parse(JSON.stringify(s));n.id=uid();n.설비명=s.설비명+" (사본)";S.srcs.splice(S.selSrc+1,0,n);S.selSrc++;renderPanes();}break;
+    case"delsrc":if(S.srcs.length<2){alert("누출원은 최소 1개 필요합니다.");break}
+      S.srcs.splice(S.selSrc,1);S.selSrc=0;renderPanes();break;
+    case"rel":s.등급=v;renderSrcPane();renderReport();break;
+    case"hole":s.S=+v;renderSrcPane();renderReport();break;
+    case"k":s.k=+v;s.k근거=K_ROWS.find(r=>+r[2]===+v)[1];renderSrcPane();renderReport();break;
+    case"uw":s.uw=+v;if(s.uwLink)s.uwPool=+v;
+      s.uw근거 = (+v===0.05)?"옥내의 경우 최소 공기속도 0.05 m/s 가정(<표 1> 비고)":"<표 1> 옥외 환기속도 적용";
+      renderSrcPane();renderReport();break;
+  }
+});
+document.querySelectorAll(".tabs button").forEach(btn=>btn.addEventListener("click",()=>{
+  document.querySelectorAll(".tabs button").forEach(x=>x.classList.remove("on"));btn.classList.add("on");
+  document.querySelectorAll(".tabpane").forEach(x=>x.classList.remove("on"));
+  $("#pane-"+btn.dataset.tab).classList.add("on");
+}));
+$("#btnPdf").addEventListener("click",()=>{
+  document.title=`방폭계산서_${S.doc.회사}_${new Date().toISOString().slice(0,10)}`;
+  window.print();
+});
+$("#btnSave").addEventListener("click",()=>{
+  const blob=new Blob([JSON.stringify(S,null,2)],{type:"application/json"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);
+  a.download=`방폭계산서_${S.doc.회사}.json`;a.click();URL.revokeObjectURL(a.href);
+});
+$("#btnLoad").addEventListener("click",()=>$("#fileIn").click());
+$("#fileIn").addEventListener("change",ev=>{
+  const f=ev.target.files[0];if(!f)return;
+  const rd=new FileReader();
+  rd.onload=()=>{try{const o=JSON.parse(rd.result);
+    Object.assign(S,{doc:o.doc,mats:o.mats,srcs:o.srcs,selMat:0,selSrc:0});renderPanes();
+  }catch(err){alert("파일을 읽을 수 없습니다: "+err.message)}};
+  rd.readAsText(f);
+});
+
+/* ---------- 검증용 예시 데이터(가상 사업장) ---------- */
+const SAMPLE={
+ doc:{회사:"○○산업(주)",소재지:"경기도 ○○시 ○○동 000-0 ○○공단 0라 000호",년월:thisYM(),작성자:"",
+   개요:S.doc.개요,
+   물질비고:"취급 물질은 종류가 다양하나(Xylene, MEK, Thinner, Waste Solvent 등), 폭발 하한과 인화점이 비교적 낮은 TOLUENE로 통일하여 보수적으로 검토함."},
+ mats:[Object.assign(newMat("톨루엔"),{비고:"Cas no. 108-88-3"})],
+ srcs:[]
+};
+(function(){
+ const M=SAMPLE.mats[0].id;
+ const mk=o=>Object.assign(newSrc(),{matId:M},o);
+ SAMPLE.srcs=[
+  mk({설비명:"TM-01~05",설명:"TANK MIXER / H.S MIXER",누출원:"하단 밸브",위치:"옥내",등급:"2차",
+      등급근거:"정상작동 중 인화성 물질의 누출이 예상되지 않는 밸브 밀봉부(지침 5.3.1 2차 누출등급 ①)",
+      S:2.5,S근거:"저속 가동 부품류의 실링요소 – 밸브 스템 패킹(누출개구부가 부식 등에 의해 확대될 수 있는 조건)",
+      h:2,poolMode:"spill",uw:0.05,uwPool:0.05,uw근거:"옥내의 경우 최소 공기속도 0.05 m/s 가정(<표 1> 비고)",
+      이용도:"미흡",희석모드:"manual",희석수동:"중희석",희석근거:"설비특성상",누출형태:"무거운가스",수평:1,수직:1}),
+  mk({설비명:"ST-01~08",설명:"Storage Tank",누출원:"탱크 상부 통기구",위치:"옥외",등급:"연속",
+      등급근거:"대기와 연결된 고정 통기구가 설치된 고정지붕 탱크 내부의 인화성 액체 표면(지침 5.3.1 연속 누출등급 ①)",
+      poolMode:"tank",D:2.3,uw:0.15,uwPool:0.15,
+      uw근거:"<표 1> 옥외·장애물 있는 지역·지표면 2 m 이하·공기보다 무거운 증기",
+      이용도:"미흡",희석모드:"auto",누출형태:"무거운가스",수평:1,수직:1}),
+  mk({설비명:"ST-10~12",설명:"Thinner Storage Tank",누출원:"하단 밸브",위치:"옥내",등급:"2차",
+      등급근거:"정상작동 중 인화성 물질의 누출이 예상되지 않는 밸브 밀봉부(지침 5.3.1 2차 누출등급 ①)",
+      S:2.5,S근거:"저속 가동 부품류의 실링요소 – 밸브 스템 패킹(누출개구부가 부식 등에 의해 확대될 수 있는 조건)",
+      h:6,poolMode:"spill",uw:0.05,uwPool:0.05,uw근거:"옥내의 경우 최소 공기속도 0.05 m/s 가정(<표 1> 비고)",
+      이용도:"미흡",희석모드:"auto",누출형태:"무거운가스",수평:1,수직:1})
+ ];
+})();
+$("#btnSample").addEventListener("click",()=>{
+  if(!confirm("현재 입력내용을 지우고 예시 데이터를 불러옵니다. 계속할까요?"))return;
+  const c=JSON.parse(JSON.stringify(SAMPLE));
+  Object.assign(S,{doc:c.doc,mats:c.mats,srcs:c.srcs,selMat:0,selSrc:0});
+  renderPanes();
+});
+renderPanes();
+</script>
+</body>
+</html>
