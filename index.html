@@ -260,6 +260,63 @@ const $=(s,r=document)=>r.querySelector(s);
 const CIRC=["①","②","③","④","⑤","⑥","⑦","⑧","⑨","⑩","⑪","⑫","⑬","⑭","⑮"];
 const R_GAS=8314, PA_ATM=101325, G=9.8;
 
+/* ===================== 운전압력 =====================
+   지침 기호표(부속서, 인쇄 54p)는 두 압력을 구분한다.
+     P  : 용기의 내부압력(Pa)          → 가스식 (식2)(식3)(식4) 에 들어가는 절대압
+     ΔP : 개구부에서의 누설 압력차(Pa) → 액체식 (식1) 에 들어가는 압력차
+   따라서 같은 운전압력이라도 가스는 절대압, 액체는 게이지압으로 쓴다.
+   "상압"은 게이지 0(= 절대 1atm)이라는 뜻이므로 액체 ΔP 는 액주 ρgh 만 남는다. */
+const P_UNITS={"ATM":null,"kPa":1e3,"MPa":1e6,"bar":1e5,"kgf/cm²":98066.5,"psi":6894.757};
+
+function popPa(s){
+  const u=s.PopUnit||"ATM", f=P_UNITS[u];
+  if(f==null)return {isATM:true,ok:true,Pg:0,Pabs:PA_ATM};       // 상압
+  const v=+s.Pop;
+  if(!isFinite(v))return {isATM:false,ok:false,Pg:NaN,Pabs:NaN}; // 미입력
+  const Pabs=(s.PopBasis==="a")?v*f:v*f+PA_ATM;
+  return {isATM:false,ok:true,Pg:Pabs-PA_ATM,Pabs:Pabs};
+}
+/* 목록표·계산서에 찍는 표기 (예: "0.5 MPa(g)") */
+function popLabel(s){
+  const u=s.PopUnit||"ATM";
+  if(P_UNITS[u]==null)return "ATM";
+  const v=+s.Pop;
+  return isFinite(v)?`${trim(String(v))} ${u}(${s.PopBasis==="a"?"a":"g"})`:"-";
+}
+
+/* ===================== 누출원 유형 =====================
+   지침 부속서의 계산 예시가 유형마다 압력을 다르게 잡는다. 그 차이를 프리셋으로 굳혀 둔다.
+     mode  liquid = 액체 오리피스(식1) → 증발풀(식6)
+           gas    = 가스 오리피스(식3)(식4)
+           flash  = 가압 액화가스. 액체 오리피스로 W 를 구한 뒤 플래시분율만큼만 증기가 된다
+           given  = 오리피스식을 쓰지 않고 제조사 데이터의 누출률을 그대로 쓴다
+     atm   true 면 상압 고정(운전압력 입력칸을 잠근다)
+     head  액주 ρgh 를 ΔP 에 넣을지. "opt" 는 넣되 기본 0 (토출압이 지배적이라)  */
+const SRC_TYPES={
+ "상압탱크":{mode:"liquid",code:"L",atm:true,head:true,pool:"both",
+   desc:"대기와 연결된 고정 통기구가 있는 고정지붕 탱크 등 대기 개방 액면",
+   ref:"지침 5.3.1 연속누출등급 ① / 교우산업 계산서 ST-01~08"},
+ "가압탱크":{mode:"liquid",code:"L",atm:false,head:true,pool:"spill",
+   desc:"질소 봉입 등으로 가압된 저장용기. ΔP 에 게이지 운전압력이 더해진다",
+   ref:"지침 6.2.2 (식1) — ΔP 는 '개구부에서의 누설 압력차'"},
+ "펌프":{mode:"liquid",code:"L",atm:false,head:"opt",pool:"spill",
+   desc:"펌프·압축기 기계씰 및 토출배관. ΔP 는 토출압이 지배하고 액주는 보통 무시한다",
+   ref:"지침 부속서 2.2.1 (1)(2) 산업용 펌프 — ΔP = 15 bar 로 계산"},
+ "액체배관":{mode:"liquid",code:"L",atm:false,head:true,pool:"spill",
+   desc:"액체 배관의 플랜지·밸브 스템 패킹·연결부",
+   ref:"지침 <표1> 2차 누출등급의 누출구멍 단면적"},
+ "가스배관":{mode:"gas",code:"G",atm:false,head:false,pool:null,
+   desc:"가스 배관의 제어밸브 스템 패킹·플랜지 등 밀봉부",
+   ref:"지침 부속서 2.2.2 (1) 제어밸브 — 사용압력 10 bar(게이지)"},
+ "액화가스":{mode:"flash",code:"LG",atm:false,head:"opt",pool:null,
+   desc:"LPG 등 가압 액화가스. 누출점에서 일부가 플래시 증발하고 나머지는 배출된다",
+   ref:"지침 6.3.3 액화가스 / 부속서 2.2.1(1) — Wg 는 '증기화된 액체비율'로 결정"},
+ "브리더밸브":{mode:"given",code:"G",atm:true,head:false,pool:null,
+   desc:"브리더밸브·통기구 등 제조사가 누출률을 제시하는 누출원. 오리피스식을 쓰지 않는다",
+   ref:"지침 부속서 2.2.1 (3) 브리더밸브 — 누출률 4.50×10⁻³ kg/s (제조사 데이터)"}
+};
+function tyOf(s){return SRC_TYPES[s.srcType]||SRC_TYPES["상압탱크"]}
+
 /* ===================== 상태 ===================== */
 const MAT_LIB={
   "톨루엔":{식:"C7H8",M:92.14,rho:866.9,비중:3.14,gamma:1.1,인화점:4,발화점:480,비점:110.6,Pv:3.79,LFL:1.1,그룹:"IIA",온도:"T1",CAS:"108-88-3"},
@@ -281,18 +338,43 @@ function newMat(name){
 }
 function newSrc(n){
   return {id:uid(),설비명:"설비-01",설명:"",누출원:"",matId:null,
-    위치:"옥내",상태:"liquid",등급:"2차",등급근거:"",
+    위치:"옥내",srcType:"상압탱크",상태:"liquid",등급:"2차",등급근거:"",
+    Wg직접:"",Fv:"",Fv근거:"",
     Cd:0.75,Cd근거:"모난(비원형) 오리피스",S:2.5,Scell:"",S근거:"",
     t:"",dPmode:"head",h:"",dP:0,
     poolMode:"spill",D:2.3,
-    P_MPa:1.0,T_gas:288,Z:1,
+    T_gas:288,Z:1,
     k:1,k근거:"실험결과 또는 문헌자료에 폭발하한이 명확한 물질(단일 및 혼합물질)",
     uw:0.05,uw근거:"옥내의 경우 최소 공기속도 0.05 m/s 를 가정(<표 1> 비고)",uwcell:"",uw옥내:true,
     이용도:"미흡",이용도직접:"",이용도적용:"미흡",
     누출형태:"무거운가스",
     희석모드:"auto",희석수동:"중희석",희석근거:"설비특성상",
     범위모드:"auto",범위수동:"",수평:"",수직:"",
-    Ta:25,Top:25,운전압력:"ATM",비고:""};
+    Ta:25,Top:25,Pop:"",PopUnit:"ATM",PopBasis:"g",비고:""};
+}
+/* 예전에 저장한 파일은 운전압력이 "ATM" 같은 표기용 문자열이었고,
+   가스 압력만 P_MPa(절대) 로 따로 들고 있었다. 숫자+단위 구조로 옮긴다. */
+function fillSrcDefaults(s){
+  if(!s)return;
+  if(s.Wg직접==null)s.Wg직접="";
+  if(s.Fv==null)s.Fv="";
+  if(s.PopUnit==null){
+    const lg=String(s.운전압력==null?"":s.운전압력).trim(), n=lg.match(/-?[\d.]+/);
+    if(s.상태!=="liquid"&&isFinite(+s.P_MPa)&&+s.P_MPa>0){
+      s.Pop=+s.P_MPa;s.PopUnit="MPa";s.PopBasis="a";            // 옛 "P(MPa abs)"
+    }else if(n&&/kpa|mpa|bar|psi|kgf/i.test(lg)){
+      s.Pop=+n[0];
+      s.PopUnit=/mpa/i.test(lg)?"MPa":/kpa/i.test(lg)?"kPa":/bar/i.test(lg)?"bar":/psi/i.test(lg)?"psi":"kgf/cm²";
+      s.PopBasis=/abs|절대|\(a\)/i.test(lg)?"a":"g";
+    }else{s.Pop="";s.PopUnit="ATM";s.PopBasis="g";}
+  }
+  if(s.PopBasis==null)s.PopBasis="g";
+  if(s.Pop==null)s.Pop="";
+  /* 유형 선택이 없던 파일 : 상·압력·풀 산정방식으로 가장 가까운 유형을 고른다.
+     (압력 이관을 마친 뒤라야 상압/가압을 가릴 수 있어 여기서 정한다) */
+  if(s.srcType==null||!SRC_TYPES[s.srcType])
+    s.srcType = s.상태==="gas" ? "가스배관"
+      : (P_UNITS[s.PopUnit]==null ? "상압탱크" : "가압탱크");
 }
 function uid(){return Math.random().toString(36).slice(2,9)}
 
@@ -340,24 +422,54 @@ const EXT={무거운가스:{a:8.5725,b:0.48750},저속확산:{a:4.2341,b:0.49757
 
 function calcSrc(s,m){
   const r={ok:true,msg:[],phase:s.상태};
+  /* 유형이 상(相)을 결정한다. 예전 필드인 s.상태 는 유형에 맞춰 따라간다. */
   if(!m){r.ok=false;r.msg.push("물질이 지정되지 않았습니다.");return r}
   const M=+m.M,LFL=+m.LFL/100,rho=+m.rho,Pv=+m.Pv,k=+s.k,S_m2=(+s.S)/1e6;
   r.LFL=LFL;r.S_m2=S_m2;
   const Ta=+s.Ta+273.15, Top=+s.Top+273.15;
   r.Ta=Ta;r.Top=Top;
+  const TY=tyOf(s); r.ty=TY; r.mode=TY.mode; r.code=TY.code;
+  s.상태 = (TY.mode==="liquid"||TY.mode==="flash") ? "liquid" : "gas";
+  r.phase=s.상태;
+  /* 탱크 액표면 풀은 상압탱크(대기 개방 액면)에서만 뜻이 있다 */
+  if(TY.pool==="spill")s.poolMode="spill";
+  const P0=popPa(TY.atm?{PopUnit:"ATM"}:s);      // 상압 고정 유형은 입력값을 무시한다
+  r.isATM=P0.isATM; r.popOk=P0.ok; r.Pg=P0.Pg; r.Pabs=P0.Pabs;
+  r.rho_g = PA_ATM*M/(R_GAS*Ta);
 
-  if(s.상태==="liquid"){
-    r.dP = s.dPmode==="head" ? rho*G*(+s.h) : +s.dP;
+  if(TY.mode==="given"){
+    /* 브리더밸브 등 — 제조사 데이터의 누출률을 그대로 쓴다(지침 부속서 2.2.1(3)) */
+    r.Wg = +s.Wg직접;
+    r.Qg = r.Wg/r.rho_g;
+    r.C  = r.Wg/(r.rho_g*k*LFL);
+  }else if(TY.mode==="liquid"||TY.mode==="flash"){
+    /* ΔP = 게이지 운전압력 + 액주 ρgh.
+       상압이면 앞항이 0 이라 지금까지처럼 ρgh 만 남는다. */
+    r.dPhead = TY.head ? rho*G*(+s.h||0) : 0;
+    r.dPop   = P0.isATM ? 0 : P0.Pg;
+    r.dP = s.dPmode==="head" ? (r.dPhead+r.dPop) : +s.dP;
+    if(isFinite(r.dP)&&r.dP<0){r.dPneg=true;r.dP=0}   // 부압이면 액이 밀려나가지 않는다
     r.hEq = r.dP/(rho*G);              // ΔP 를 직접 넣었을 때의 상당 액주높이
     r.W  = (+s.Cd)*S_m2*Math.sqrt(2*rho*r.dP);
-    r.V  = r.W*(+s.t)/rho;
-    if(s.poolMode==="tank"){ r.Ap=Math.PI*Math.pow(+s.D,2)/4; }
-    else { r.Ap=r.V/0.01; }
-    r.Qg = 6.5*Math.pow(+s.uw,0.78)*r.Ap*Pv/(1e5*Math.pow(M,0.333))*(Ta/Top);
-    r.C  = r.Qg/(k*LFL);
-    r.Wg = null;
+    if(TY.mode==="flash"){
+      /* 가압 액화가스 : 누출점에서 플래시 증발한 분율만 증기운이 된다.
+         지침 부속서 2.2.1(1) 이 Wg 를 "증기화된 액체비율"(W의 2%)로 잡은 방식과 같다.
+         남은 액체는 지침 예제처럼 배출되는 것으로 보고 풀은 세지 않는다. */
+      r.Fv = (+s.Fv)/100;
+      r.Wg = r.W*r.Fv;
+      r.Qg = r.Wg/r.rho_g;
+      r.C  = r.Wg/(r.rho_g*k*LFL);
+    }else{
+      r.V  = r.W*(+s.t)/rho;
+      if(s.poolMode==="tank"){ r.Ap=Math.PI*Math.pow(+s.D,2)/4; }
+      else { r.Ap=r.V/0.01; }
+      r.Qg = 6.5*Math.pow(+s.uw,0.78)*r.Ap*Pv/(1e5*Math.pow(M,0.333))*(Ta/Top);
+      r.C  = r.Qg/(k*LFL);
+      r.Wg = null;
+    }
   }else{
-    const g=+m.gamma, P=(+s.P_MPa)*1e6, T=+s.T_gas;
+    /* 가스식의 P 는 "용기의 내부압력" = 절대압이다. */
+    const g=+m.gamma, P=P0.Pabs, T=+s.T_gas;
     const Z=(+s.Z>0)?+s.Z:1;              // 압축계수. 지침 6.2.3.1(3),(4)
     r.gamma=g;r.P=P;r.T=T;r.Z=Z;
     r.Pc = PA_ATM*Math.pow((g+1)/2, g/(g-1));
@@ -378,13 +490,21 @@ function calcSrc(s,m){
   r.done=isFinite(r.C)&&r.C>0;          // 필수 입력이 채워져 계산이 성립하는가
   if(!r.done){
     const miss=[];
-    if(s.상태==="liquid"&&s.poolMode!=="tank"){
-      if(!isFinite(+s.t)||+s.t<=0)miss.push("누출시간 t");
-      if(s.dPmode==="head"?(!isFinite(+s.h)||+s.h<=0):(!isFinite(+s.dP)||+s.dP<=0))
+    if(!r.popOk)miss.push("운전압력");
+    if(TY.mode==="given"&&(!isFinite(+s.Wg직접)||+s.Wg직접<=0))miss.push("누출률 Wg (제조사 데이터)");
+    if(TY.mode==="flash"&&(!isFinite(+s.Fv)||+s.Fv<=0))miss.push("플래시 증발분율 Fv");
+    if(TY.mode==="liquid"||TY.mode==="flash"){
+      if(TY.mode==="liquid"&&s.poolMode!=="tank"&&(!isFinite(+s.t)||+s.t<=0))miss.push("누출시간 t");
+      /* 가압 상태에서는 ΔP 를 운전압력이 만드므로 h 는 0(누출점이 액면 높이)이어도 된다. */
+      if(s.dPmode==="head"?(r.isATM&&(!isFinite(+s.h)||+s.h<=0)):(!isFinite(+s.dP)||+s.dP<=0))
         miss.push(s.dPmode==="head"?"액주높이 h":"누설 압력차 ΔP");
     }
-    r.msg.push(miss.length?`${miss.join(" · ")} 을(를) 입력해야 계산됩니다.`:"입력값이 부족하여 계산할 수 없습니다.");
+    if(TY.mode==="gas"&&r.isATM)
+      r.msg.push("가스는 <b>상압</b>에서 누출을 구동할 압력차가 없어 W<sub>g</sub> = 0 입니다. 운전압력을 입력하세요.");
+    if(miss.length)r.msg.push(`${miss.join(" · ")} 을(를) 입력해야 계산됩니다.`);
+    if(!r.msg.length)r.msg.push("입력값이 부족하여 계산할 수 없습니다.");
   }
+  if(r.dPneg)r.msg.push("운전압력이 대기압보다 낮아(부압) 액주를 더해도 ΔP ≤ 0 입니다. ΔP = 0 으로 두었습니다.");
   r.bHi = DIL_HI.a*Math.pow(r.C,DIL_HI.b);
   r.bLo = DIL_LO.a*Math.pow(r.C,DIL_LO.b);
   r.희석auto = r.done ? (uw>=r.bHi ? "고희석" : (uw<=r.bLo ? "저희석" : "중희석")) : "-";
@@ -978,10 +1098,10 @@ function part2Table(){
     const m=matOf(s),r=calcSrc(s,m);
     const gr={"연속":"C","1차":"P","2차":"S"}[s.등급];
     const ut={"우수":"G","양호":"F","미흡":"P"}[r.이용도]||"P";
-    const amt=s.상태==="liquid"&&s.poolMode==="tank"?`${num(r.Qg,3)}<br>(m³/s)`:num(s.상태==="liquid"?r.W:r.Wg,3);
+    const amt=r.mode==="liquid"&&s.poolMode==="tank"?`${num(r.Qg,3)}<br>(m³/s)`:num(r.mode==="liquid"?r.W:r.Wg,3);
     h+=`<tr><td>${i+1}</td><td>${esc(s.설비명)}</td><td>${esc(s.위치)}</td><td>${gr}</td><td>${amt}</td><td>${num(r.C,2)}</td>
-    <td>${S.mats.indexOf(m)+1}</td><td>${s.Top==25?"AMB":s.Top}</td><td>${esc(s.운전압력)}</td>
-    <td>${s.상태==="liquid"?"L":"G"}</td><td>${s.위치==="옥내"?"A":"N"}</td><td>${r.희석}</td><td>${ut}</td>
+    <td>${S.mats.indexOf(m)+1}</td><td>${s.Top==25?"AMB":s.Top}</td><td>${esc(popLabel(s))}</td>
+    <td>${r.code}</td><td>${s.위치==="옥내"?"A":"N"}</td><td>${r.희석}</td><td>${ut}</td>
     <td>${r.zone}</td><td>${m1(r.수평)}</td><td>${m1(r.수직)}</td><td>${esc(s.비고)}</td></tr>`;});
   return h+`</table>`;
 }
@@ -989,8 +1109,8 @@ function part2Table(){
 /* --------- 설비별 계산 페이지 --------- */
 function srcPages(s,idx){
   const m=matOf(s), r=calcSrc(s,m);
-  const liq=s.상태==="liquid", spill=liq&&s.poolMode==="spill";
-  const hasHole = !liq || spill;
+  const liq=r.mode==="liquid", spill=liq&&s.poolMode==="spill";
+  const hasHole = r.mode!=="given" && (!liq || spill);   // 제조사 데이터형은 오리피스가 없다
   let n=0; const N=()=>CIRC[n++];
   const title=`<h3 class="sub" style="margin-top:0">- ${esc(s.설비명)}${s.설명?`(${esc(s.설명)})`:""}</h3>`;
   const K=t=>"src:"+s.id+":"+t;
@@ -1000,10 +1120,10 @@ function srcPages(s,idx){
    <p class="item">${N()} 물질특성 및 환기조건</p>
    <table class="spec"><tr><th colspan="2">Characteristics of release</th><th colspan="2">Ventilation characteristics</th></tr>
    <tr><td class="k">Material</td><td>${esc(m.명칭==="톨루엔"?"Toluene":m.명칭)}</td><td class="k">Location</td><td>${s.위치==="옥내"?"indoor":"outdoor"}</td></tr>
-   <tr><td class="k">Phase</td><td>${liq?"L":"G"}</td><td class="k">Ventilation speed</td><td>${s.uw} m/s</td></tr>
+   <tr><td class="k">Phase</td><td>${r.code}</td><td class="k">Ventilation speed</td><td>${s.uw} m/s</td></tr>
    <tr><td class="k">Molecular mass</td><td>${m.M} kg/kmol</td><td class="k">Ambient temperature</td><td>${s.Ta} ℃</td></tr>
    <tr><td class="k">Leakage<br>cross-sectional area</td><td>${trim((+s.S/1e6).toFixed(9))} m²</td><td class="k">Operating temperature</td><td>${s.Top} ℃</td></tr>
-   <tr><td class="k">Source of release</td><td>${ph(s.누출원,"-")}</td><td class="k">Operating pressure</td><td>${esc(s.운전압력)}</td></tr>
+   <tr><td class="k">Source of release</td><td>${ph(s.누출원,"-")}<br><span style="font-size:8pt">(${esc(s.srcType)})</span></td><td class="k">Operating pressure</td><td>${esc(popLabel(s))}</td></tr>
    <tr><td class="k">Lower explosion limit(LEL)</td><td>${m.LFL} %</td><td class="k">Ventilation utilization<br>(G(우수), F(양호), P(미흡))</td><td>${({"우수":"G","양호":"F","미흡":"P"})[r.이용도]||"P"}</td></tr>
    <tr><td class="k">LEL Safety factor (k)</td><td>${s.k}<br><span style="font-size:8pt">(k=${s.k}: ${esc(s.k근거)})</span></td><td class="k">Ventilation type<br>(N(자연환기), A(강제환기))</td><td>${s.위치==="옥내"?"A":"N"}</td></tr>
    <tr><td class="k">누출계수(Cd)</td><td>${s.Cd}${String(s.Cd근거||"").trim()?`<br><span style="font-size:8pt">(${esc(s.Cd근거)})</span>`:""}</td><td class="k">누출등급</td><td>${s.등급}</td></tr></table>
@@ -1027,7 +1147,10 @@ function srcPages(s,idx){
      ${String(s.S근거||"").trim()?`<p class="ind" style="font-size:9.5pt">적용근거 : ${esc(s.S근거)}</p>`:""}`,K("b"));
   }
   /* 블록 C : 누출률/증발률 */
-  page(`${liq?liqCalc(s,m,r,N()):gasCalc(s,m,r,N())}`,K("c"));
+  page(`${r.mode==="liquid"?liqCalc(s,m,r,N())
+       : r.mode==="flash" ?flashCalc(s,m,r,N())
+       : r.mode==="given" ?givenCalc(s,m,r,N())
+       :                   gasCalc(s,m,r,N())}`,K("c"));
   /* 블록 D : 누출특성 + 희석등급 */
   const dilTxt = s.희석모드==="auto"
     ? `희석등급 평가차트에 따라 <span class="orange">${r.희석}</span>으로 판단함.`
@@ -1064,6 +1187,64 @@ function srcPages(s,idx){
      환기유효성 ${r.희석}, 환기등급 ${r.이용도}으로 위험장소구분 기준으로 ${r.zone} 장소이며,<br>
      위험성을 고려하여 장치로부터 ${m1(r.수평)} m 를 ${r.zone} 장소로 구분함.</div></div>`,K("f"));
 }
+/* ΔP 산정 과정 — 액체 오리피스식을 쓰는 유형(액체·액화가스)이 함께 쓴다 */
+function dpLines(s,m,r){
+  if(s.dPmode!=="head")
+    /* ΔP 를 직접 적용한 경우. h 는 그 압력에 상당하는 액주높이를 역산한 값 */
+    return `Δ<i>P</i> = ${Math.round(r.dP).toLocaleString()} Pa 를 적용함<br>
+  &nbsp;&nbsp;&nbsp;<i>h</i> = <span class="frac"><span>Δ<i>P</i></span><span class="den"><i>ρ</i> × <i>g</i></span></span> = ${Math.round(r.dP).toLocaleString()} / (${m.rho} kg/m³ × 9.8 m/sec²) = ${fx(r.hEq,2)} m &nbsp;(상당 액주높이)`;
+  if(r.isATM)
+    /* 상압(게이지 0) — 액주만 남는다 */
+    return `Δ<i>P</i> = <i>ρ</i> × <i>g</i> × <i>h</i> (운전압력 상압, <i>h</i> = ${s.h} m 로 가정함)<br>
+  &nbsp;&nbsp;&nbsp;= ${m.rho} kg/m³ × 9.8 m/sec² × ${s.h} m = ${fx(r.dP,2)} kg/(m·s²) ≈ ${Math.round(r.dP).toLocaleString()} Pa`;
+  if(!r.ty.head||!(r.dPhead>0))
+    /* 펌프 토출처럼 액주를 세지 않는 경우 — 게이지 운전압력이 곧 ΔP */
+    return `Δ<i>P</i> = <i>P</i><sub>g</sub> = ${esc(popLabel(s))}${s.PopBasis==="a"?` − 101,325 Pa`:``} = ${Math.round(r.dP).toLocaleString()} Pa
+  &nbsp;<span style="font-size:8.5pt">(${esc(r.ty.desc)}. 액주 상당높이 ${fx(r.hEq,2)} m)</span>`;
+  /* 가압 — 게이지 운전압력이 액주에 더해진다 */
+  return `Δ<i>P</i> = <i>P</i><sub>g</sub> + <i>ρ</i> × <i>g</i> × <i>h</i> &nbsp;(운전압력 ${esc(popLabel(s))}, <i>h</i> = ${(+s.h||0)} m)<br>
+  &nbsp;&nbsp;&nbsp;<i>P</i><sub>g</sub> = ${s.PopBasis==="a"
+      ? `${Math.round(r.Pabs).toLocaleString()} Pa(abs) − 101,325 Pa`
+      : `${Math.round(r.Pg).toLocaleString()} Pa(gauge)`} = ${Math.round(r.Pg).toLocaleString()} Pa<br>
+  &nbsp;&nbsp;&nbsp;<i>ρgh</i> = ${m.rho} kg/m³ × 9.8 m/sec² × ${(+s.h||0)} m = ${Math.round(r.dPhead).toLocaleString()} Pa<br>
+  &nbsp;&nbsp;&nbsp;∴ Δ<i>P</i> = ${Math.round(r.Pg).toLocaleString()} + ${Math.round(r.dPhead).toLocaleString()} = ${Math.round(r.dP).toLocaleString()} Pa
+  &nbsp;<span style="font-size:8.5pt">(액주 상당높이 ${fx(r.hEq,2)} m)</span>`;
+}
+
+/* 가압 액화가스 — 액체 오리피스로 W 를 구한 뒤 플래시분율만 증기가 된다.
+   지침 부속서 2.2.1(1) 이 Wg 를 "누출 지점에서 증기화된 액체비율"로 잡은 것과 같은 방식. */
+function flashCalc(s,m,r,cn){
+  const S6=trim((+s.S/1e6).toFixed(9));
+  return `<p class="item">${cn} 가스 누출률(<i>W<sub>g</sub></i>) = <span class="orange">${num(r.Wg,3)} kg/s</span></p>
+  <p class="ind2" style="color:#1546a0;font-size:9.5pt">* 지침 6.3.3 : 가압된 액화가스는 누출점에서 부분적으로 플래시 증발하며, 유체가 냉각되어 전체가 증발되지는 않는다.
+   따라서 액체 누출률 <i>W</i> 를 (식1)로 구한 뒤 증기화된 액체비율만 증기운에 기여한다 — 지침 부속서 2.2.1(1)이 <i>W<sub>g</sub></i> 를 <i>W</i> 의 2 %로 잡은 것과 같은 방식이다.</p>
+  <p class="ind">⑴ 액체 누출률</p>${EQ.liq}${DEF.liq}
+  <div class="calc">
+  ${dpLines(s,m,r)}<br>
+  ∴ <i>W</i> = ${s.Cd} × ${S6} × √(2 × ${m.rho} × ${Math.round(r.dP)}) = <span class="res">${num(r.W,4)} kg/s</span></div>
+  <p class="ind">⑵ 플래시 증발분율 적용</p>
+  <div class="dl"><b><i>F<sub>v</sub></i></b> : 누출 지점에서 증기화된 액체비율${String(s.Fv근거||"").trim()?` — ${esc(s.Fv근거)}`:""}</div>
+  <div class="calc"><i>W<sub>g</sub></i> = <i>W</i> × <i>F<sub>v</sub></i> = ${num(r.W,4)} × ${trim(String(+s.Fv))}% = <span class="res">${num(r.Wg,3)} kg/s</span><br>
+  <span style="font-size:8.5pt">남은 액체 ${trim(String(100-(+s.Fv)))}% 는 지침 예제와 같이 배출되는 것으로 보아 풀을 형성하지 않는 것으로 산정함.</span></div>
+  <p class="ind">⑶ 가스(증기) 밀도</p>
+  <div class="calc"><i>ρ<sub>g</sub></i> = <span class="frac"><span><i>P<sub>a</sub></i> × <i>M</i></span><span class="den"><i>R</i> × <i>T<sub>a</sub></i></span></span>
+   = (101,325 × ${m.M}) / (8314 × ${fx(r.Ta,2)}) = <span class="res">${num(r.rho_g,4)} kg/m³</span><br>
+  &nbsp;&nbsp;<i>Q<sub>g</sub></i> = <i>W<sub>g</sub></i> / <i>ρ<sub>g</sub></i> = <span class="res">${sci(r.Qg,3)} m³/s</span></div>`;
+}
+
+/* 브리더밸브 등 — 제조사가 제시한 누출률을 그대로 쓴다 */
+function givenCalc(s,m,r,cn){
+  return `<p class="item">${cn} 누출률(<i>W<sub>g</sub></i>) = <span class="orange">${num(r.Wg,3)} kg/s</span></p>
+  <p class="ind2" style="color:#1546a0;font-size:9.5pt">* 지침 부속서 2.2.1(3) 브리더밸브 예시는 누출률을 오리피스식으로 계산하지 않고 <b>제조사 데이터</b>로 제시한다
+   (1차 4.50×10⁻³ kg/s, 2차 4.95×10⁻² kg/s). 따라서 <i>C<sub>d</sub></i>·<i>S</i>·Δ<i>P</i> 를 쓰지 않는다.</p>
+  <p class="ind">⑴ 적용 누출률</p>
+  <div class="calc"><i>W<sub>g</sub></i> = <span class="res">${num(r.Wg,3)} kg/s</span> &nbsp;<span style="font-size:8.5pt">(${esc(String(s.S근거||"제조사 데이터"))})</span></div>
+  <p class="ind">⑵ 가스(증기) 밀도</p>
+  <div class="calc"><i>ρ<sub>g</sub></i> = <span class="frac"><span><i>P<sub>a</sub></i> × <i>M</i></span><span class="den"><i>R</i> × <i>T<sub>a</sub></i></span></span>
+   = (101,325 × ${m.M}) / (8314 × ${fx(r.Ta,2)}) = <span class="res">${num(r.rho_g,4)} kg/m³</span><br>
+  &nbsp;&nbsp;<i>Q<sub>g</sub></i> = <i>W<sub>g</sub></i> / <i>ρ<sub>g</sub></i> = <span class="res">${sci(r.Qg,3)} m³/s</span></div>`;
+}
+
 function liqCalc(s,m,r,cn){
   const spill=s.poolMode==="spill";
   const S6=trim((+s.S/1e6).toFixed(9));
@@ -1080,12 +1261,7 @@ function liqCalc(s,m,r,cn){
   <div class="dl"><b><i>ρ</i></b> : 액체 밀도 (kg/m³)</div>
   <div class="dl"><b>Δ<i>P</i></b> : 개구부에서의 누설 압력 차 (Pa)</div>
   <div class="calc">
-  ${s.dPmode==="head"
-    ? `Δ<i>P</i> = <i>ρ</i> × <i>g</i> × <i>h</i> (<i>h</i> = ${s.h} m 로 가정함)<br>
-  &nbsp;&nbsp;&nbsp;= ${m.rho} kg/m³ × 9.8 m/sec² × ${s.h} m = ${fx(r.dP,2)} kg/(m·s²) ≈ ${Math.round(r.dP).toLocaleString()} Pa`
-    /* ΔP 를 직접 적용한 경우에도 같은 식으로 적는다. h 는 그 압력에 상당하는 액주높이를 역산한 값 */
-    : `Δ<i>P</i> = ${Math.round(r.dP).toLocaleString()} Pa 를 적용함<br>
-  &nbsp;&nbsp;&nbsp;<i>h</i> = <span class="frac"><span>Δ<i>P</i></span><span class="den"><i>ρ</i> × <i>g</i></span></span> = ${Math.round(r.dP).toLocaleString()} / (${m.rho} kg/m³ × 9.8 m/sec²) = ${fx(r.hEq,2)} m &nbsp;(상당 액주높이)`}<br>
+  ${dpLines(s,m,r)}<br>
   ∴ <i>W</i> = ${s.Cd} × ${S6} × √(2 × ${m.rho} × ${Math.round(r.dP)}) = <span class="res">${num(r.W,4)} kg/s</span><br>
   &nbsp;&nbsp;<i>V</i><sub>누출</sub> = ${num(r.W,4)} × ${s.t} / ${m.rho} = <span class="res">${num(r.V,3)} m³</span><br>
   &nbsp;&nbsp;<i>A<sub>p</sub></i> = ${num(r.V,3)} / 0.01 = <span class="res">${num(r.Ap,4)} m²</span></div>`
@@ -1099,13 +1275,20 @@ function liqCalc(s,m,r,cn){
 function gasCalc(s,m,r,cn){
   const S6=trim((+s.S/1e6).toFixed(9));
   return `<p class="item">${cn} 가스 누출률(<i>W<sub>g</sub></i>) = <span class="orange">${num(r.Wg,3)} kg/s</span></p>
-  <p class="ind">⑴ 임계압력 판정</p>${EQ.pc}
+  <p class="ind">⑴ 용기 내부압력(절대압) 환산</p>
+  <p class="ind2" style="color:#1546a0;font-size:9.5pt">* 지침 기호표 : <i>P</i> 는 "용기의 내부압력"이므로 <b>절대압</b>을 적용한다.</p>
+  <div class="calc"><i>P</i> = ${r.isATM
+    ? `대기압(상압) = <span class="res">101,325 Pa(abs)</span>`
+    : (s.PopBasis==="a"
+      ? `${esc(popLabel(s))} = <span class="res">${Math.round(r.Pabs).toLocaleString()} Pa(abs)</span>`
+      : `${esc(popLabel(s))} + 101,325 Pa = <span class="res">${Math.round(r.Pabs).toLocaleString()} Pa(abs)</span>`)}</div>
+  <p class="ind">⑵ 임계압력 판정</p>${EQ.pc}
   <div class="calc"><i>P<sub>C</sub></i> = 101,325 × [(${m.gamma}+1)/2]<sup>${m.gamma}/(${m.gamma}−1)</sup> = <span class="res">${Math.round(r.Pc).toLocaleString()} Pa</span><br>
   용기 내부압력 <i>P</i> = ${Math.round(r.P).toLocaleString()} Pa ${r.choked?"≥":"&lt;"} <i>P<sub>C</sub></i> → <span class="res">${r.choked?"음속누설(Chocked)":"아음속누설(Non chocked)"}</span></div>
-  <p class="ind">⑵ 가스 누출률</p>${r.choked?EQ.choked:EQ.nonchoked}${DEF.gas}
+  <p class="ind">⑶ 가스 누출률</p>${r.choked?EQ.choked:EQ.nonchoked}${DEF.gas}
   <div class="calc">∴ <i>W<sub>g</sub></i> = ${s.Cd} × ${S6} × ${Math.round(r.P).toLocaleString()} × √(…) = <span class="res">${num(r.Wg,3)} kg/s</span>
   &nbsp;<span style="font-size:8.5pt">(M=${m.M}, γ=${m.gamma}, T=${s.T_gas}K, Z=${r.Z}, R=8314)</span></div>
-  <p class="ind">⑶ 가스(증기) 밀도</p>
+  <p class="ind">⑷ 가스(증기) 밀도</p>
   <div class="calc"><i>ρ<sub>g</sub></i> = <span class="frac"><span><i>P<sub>a</sub></i> × <i>M</i></span><span class="den"><i>R</i> × <i>T<sub>a</sub></i></span></span>
    = (101,325 × ${m.M}) / (8314 × ${fx(r.Ta,2)}) = <span class="res">${num(r.rho_g,4)} kg/m³</span><br>
   &nbsp;&nbsp;<i>Q<sub>g</sub></i> = <i>W<sub>g</sub></i> / <i>ρ<sub>g</sub></i> = <span class="res">${sci(r.Qg,3)} m³/s</span></div>`;
@@ -1116,6 +1299,22 @@ function gasCalc(s,m,r,cn){
 function F(label,path,type,attrs){
   const v=getPath(path);
   return `<label class="f"><span>${label}</span><input type="${type||"text"}" data-path="${path}" ${type==="number"?'step="any"':""} value="${v==null?"":String(v).replace(/"/g,"&quot;")}" ${attrs||""}></label>`;
+}
+/* 운전압력 : 숫자 + 단위 + 게이지/절대. 단위에서 "상압"을 고르면 숫자칸은 잠긴다. */
+function popField(s){
+  const fixed=tyOf(s).atm;                       // 유형 자체가 상압 고정이면 단위 선택도 잠근다
+  const u=fixed?"ATM":(s.PopUnit||"ATM"), atm=P_UNITS[u]==null;
+  /* 세 컨트롤을 그리드로 나눈다. label.f>span 의 display:block 을 이겨야 하므로 인라인으로 준다. */
+  return `<label class="f"><span>운전압력</span><span style="display:grid;grid-template-columns:1.1fr 1fr 0.9fr;gap:4px">
+   <input type="number" step="any" data-path="src.Pop" style="min-width:0"
+    value="${atm?"":(s.Pop==null?"":String(s.Pop).replace(/"/g,"&quot;"))}" ${atm?"disabled":""}
+    placeholder="${atm?"상압":"예) 0.5"}">
+   <select data-path="src.PopUnit" data-live="1" style="min-width:0" ${fixed?"disabled":""}>
+    ${Object.keys(P_UNITS).map(k=>`<option value="${k}" ${k===u?"selected":""}>${k==="ATM"?"상압(ATM)":k}</option>`).join("")}</select>
+   <select data-path="src.PopBasis" data-live="1" style="min-width:0" ${atm?"disabled":""}>
+    <option value="g" ${s.PopBasis!=="a"?"selected":""}>게이지</option>
+    <option value="a" ${s.PopBasis==="a"?"selected":""}>절대</option></select>
+  </span></label>`;
 }
 function Sel(label,path,opts){
   const v=getPath(path);
@@ -1192,7 +1391,9 @@ function renderMatPane(){
 }
 function renderSrcPane(){
   const s=S.srcs[S.selSrc]; if(!s){$("#pane-src").innerHTML="";return}
-  const m=matOf(s), r=calcSrc(s,m), liq=s.상태==="liquid";
+  const m=matOf(s), r=calcSrc(s,m), TY=r.ty;
+  const liq=r.mode==="liquid", flash=r.mode==="flash", given=r.mode==="given", gas=r.mode==="gas";
+  const orifice=liq||flash||gas;                 // 오리피스식을 쓰는가 (Cd·S 입력이 필요한가)
   let h=`<div class="chips">${S.srcs.map((x,i)=>`<button class="chip ${i===S.selSrc?"on":""}" data-act="selsrc" data-v="${i}">${esc(x.설비명)}</button>`).join("")}
    <button class="chip add" data-act="addsrc">+ 누출원</button></div>
    <div style="display:flex;gap:6px;margin-bottom:12px"><button class="mini" data-act="copysrc">복제</button><button class="mini danger" data-act="delsrc">삭제</button></div>`;
@@ -1200,6 +1401,9 @@ function renderSrcPane(){
   h+=`<div class="readout"><h4>계산 결과</h4><dl>
    ${liq?`<dt>액체 누출률 W</dt><dd>${num(r.W,4)} kg/s</dd>
      <dt>풀 표면적 Ap</dt><dd>${num(r.Ap,4)} m²</dd>`
+    :flash?`<dt>액체 누출률 W</dt><dd>${num(r.W,4)} kg/s</dd>
+     <dt>가스 누출률 Wg</dt><dd>${num(r.Wg,3)} kg/s</dd>`
+    :given?`<dt>누출률 Wg <em>(제조사)</em></dt><dd>${num(r.Wg,3)} kg/s</dd>`
     :`<dt>임계압력 Pc</dt><dd>${num(r.Pc,4)} Pa</dd>
      <dt>가스 누출률 Wg</dt><dd>${num(r.Wg,3)} kg/s</dd>`}
    <dt>부피증발률 Qg</dt><dd>${num(r.Qg,3)} m³/s</dd>
@@ -1213,7 +1417,15 @@ function renderSrcPane(){
    <div class="row">${F("설비명(태그)","src.설비명","text",'placeholder="예) TM-01~05"')}${F("설비 설명","src.설명","text",'placeholder="예) TANK MIXER"')}</div>
    <div class="row">${F("누출원 부위","src.누출원","text",'placeholder="예) 하단 밸브"')}${Sel("위치","src.위치",["옥내","옥외"])}</div>
    <label class="f"><span>취급물질</span><select data-act="setmat">${S.mats.map(x=>`<option value="${x.id}" ${x.id===s.matId?"selected":""}>${esc(x.명칭)}</option>`).join("")}</select></label>
-   <div class="row r3">${F("주위온도 Ta(℃)","src.Ta","number")}${F("운전온도 T(℃)","src.Top","number")}${F("운전압력 표기","src.운전압력")}</div>
+   <div class="row">${F("주위온도 Ta(℃)","src.Ta","number")}${F("운전온도 T(℃)","src.Top","number")}</div>
+   ${popField(s)}
+   <p class="hint">${TY.atm
+     ? `<b>${esc(s.srcType)}</b> 유형은 상압 고정입니다. ${liq?"Δ<i>P</i> 는 액주 <i>ρgh</i> 만으로 산정됩니다.":"누출률은 제조사 데이터를 그대로 씁니다."}`
+     : r.isATM
+     ? `상압(게이지 0)입니다. ${(liq||flash)?"액체 Δ<i>P</i> 는 액주 <i>ρgh</i> 만으로 산정됩니다.":"가스는 구동 압력차가 없어 <b>W<sub>g</sub> = 0</b> 입니다."}`
+     : (r.popOk
+       ? `게이지 <b>${Math.round(r.Pg).toLocaleString()} Pa</b> / 절대 <b>${Math.round(r.Pabs).toLocaleString()} Pa</b>${(liq||flash)?` — 액주 상당 <b>${fx(r.Pg/((+m.rho)*G),2)} m</b>` : ""}`
+       : `숫자를 입력하세요.`)}</p>
    ${F("비고","src.비고")}
   </fieldset>`;
 
@@ -1223,14 +1435,34 @@ function renderSrcPane(){
   </fieldset>`;
 
   h+=`<fieldset><legend>② 누출 조건</legend>
-   <label class="f"><span>상태</span><select data-path="src.상태" data-live="1"><option value="liquid" ${liq?"selected":""}>액체 (Liquid)</option><option value="gas" ${!liq?"selected":""}>가스/증기 (Gas)</option></select></label>
-   <div class="row">${F("누출계수 Cd","src.Cd","number")}${F("누출구멍 단면적 S(㎟)","src.S","number")}</div>
+   <label class="f"><span>누출원 유형</span><select data-path="src.srcType" data-live="1">
+    ${Object.keys(SRC_TYPES).map(k=>`<option value="${k}" ${k===s.srcType?"selected":""}>${k} — ${SRC_TYPES[k].desc.split(".")[0]}</option>`).join("")}</select></label>
+   <p class="hint">${esc(TY.desc)}.<br><b>근거</b> : ${esc(TY.ref)}</p>`;
+  if(orifice){
+    h+=`<div class="row">${F("누출계수 Cd","src.Cd","number")}${F("누출구멍 단면적 S(㎟)","src.S","number")}</div>
    <details><summary style="cursor:pointer;font-size:11.5px;color:var(--blue);font-weight:600;margin-bottom:6px">누출계수 C<sub>d</sub> 표에서 선택</summary>${tblCd(s.Cd,true)}</details>
    ${F("Cd 적용근거","src.Cd근거","text",'placeholder="예) 모난(비원형) 오리피스"')}
    ${s.등급==="2차"
      ?`<details><summary style="cursor:pointer;font-size:11.5px;color:var(--blue);font-weight:600;margin-bottom:6px">&lt;표 1&gt; 2차누출등급 누출구멍 단면적 표에서 선택</summary>${tblHole(s.S,true,null,s.Scell)}</details>`
      :`<div class="warn">&lt;표 1&gt;은 <b>2차 누출등급 전용</b>입니다. ${esc(s.등급)} 누출등급에서는 통기구·브리더밸브 등 <b>실제 누출 오리피스의 형태와 크기</b>로 S 를 정하고, 그 근거를 아래에 적으세요.</div>`}
    ${F("S 적용근거","src.S근거","text",'placeholder="예) 저속 가동 부품류 – 밸브 스템 패킹(부식 등에 의해 확대될 수 있는 조건)"')}`;
+  }else{
+    /* 제조사 데이터형 — 오리피스식을 쓰지 않으므로 Cd·S 를 받지 않는다 */
+    h+=`${F("누출률 W<sub>g</sub> (kg/s)","src.Wg직접","number",'placeholder="예) 0.0045"')}
+    ${F("누출률 출처","src.S근거","text",'placeholder="예) 제조사 데이터(브리더밸브 성능곡선)"')}
+    <p class="hint">지침 부속서 2.2.1(3) 브리더밸브 예시는 1차 누출 <b>4.50×10⁻³ kg/s</b>, 2차 누출 <b>4.95×10⁻² kg/s</b> 를 모두 제조사 데이터로 제시합니다.</p>`;
+  }
+  if(flash){
+    h+=`<div class="row">
+      <label class="f"><span>ΔP 산정</span><select data-path="src.dPmode" data-live="1"><option value="head" ${s.dPmode==="head"?"selected":""}>운전압력${TY.head===true?" + 액주높이 h":""}</option><option value="given" ${s.dPmode!=="head"?"selected":""}>직접입력</option></select></label>
+      ${F("플래시 증발분율 F<sub>v</sub> (%)","src.Fv","number",'placeholder="예) 2"')}</div>
+    ${s.dPmode==="head"?F("액주높이 h(m) <em>(보통 0)</em>","src.h","number",'placeholder="예) 0"'):F("ΔP (Pa)","src.dP","number")}
+    ${F("F<sub>v</sub> 산정근거","src.Fv근거","text",'placeholder="예) 누출 지점에서 증기화된 액체비율을 고려하여 결정(W의 2%)"')}
+    <p class="hint">ΔP = ${Math.round(r.dP||0).toLocaleString()} Pa → W = <b>${num(r.W,4)} kg/s</b> → W<sub>g</sub> = W × F<sub>v</sub> = <b>${num(r.Wg,3)} kg/s</b></p>
+    <div class="warn">지침 6.3.3 은 액화가스의 플래시 분율을 계산하는 식을 주지 않습니다. F<sub>v</sub> 는 물질의 열역학 데이터로 별도 산정하거나
+     (근사식 F<sub>v</sub> ≈ C<sub>p</sub>(T<sub>저장</sub>−T<sub>비점</sub>)/H<sub>vap</sub>), 지침 예제처럼 근거를 명시해 가정해야 합니다.
+     에어로졸·저온풀이 함께 생기는 경우는 이 모델의 범위 밖이므로 별도 검토가 필요합니다.</div>`;
+  }
   if(liq){
     const 연속=s.등급==="연속";
     h+=`<label class="f"><span>풀(Pool) 산정방식</span><select data-path="src.poolMode" data-live="1">
@@ -1246,9 +1478,15 @@ function renderSrcPane(){
           ${T_PRESET.map(o=>`<option value="${o[1]}" ${+s.t===o[1]?"selected":""}>${o[0]} (${o[1]}초)</option>`).join("")}
         </select></label>
       <div class="row">${F("누출시간 t(초)","src.t","number",'placeholder="예) 1800"')}
-      <label class="f"><span>ΔP 산정</span><select data-path="src.dPmode" data-live="1"><option value="head" ${s.dPmode==="head"?"selected":""}>액주높이 h</option><option value="given" ${s.dPmode!=="head"?"selected":""}>직접입력</option></select></label></div>
-      ${s.dPmode==="head"?F("액주높이 h(m)","src.h","number",'placeholder="예) 2"'):F("ΔP (Pa)","src.dP","number")}
-      <p class="hint">ΔP = ρ·g·h = ${num(r.dP,5)} Pa</p>
+      <label class="f"><span>ΔP 산정</span><select data-path="src.dPmode" data-live="1"><option value="head" ${s.dPmode==="head"?"selected":""}>운전압력${TY.head===true?" + 액주높이 h":""}</option><option value="given" ${s.dPmode!=="head"?"selected":""}>직접입력</option></select></label></div>
+      ${s.dPmode==="head"?F(TY.head===true?"액주높이 h(m) <em>(누출점 위 액면높이)</em>":"액주높이 h(m) <em>(토출압이 지배 — 보통 0)</em>","src.h","number",TY.head===true?'placeholder="예) 2"':'placeholder="예) 0"'):F("ΔP (Pa)","src.dP","number")}
+      <p class="hint">${s.dPmode!=="head"
+        ? `ΔP = ${num(r.dP,5)} Pa <em>(직접입력)</em>`
+        : (r.isATM
+          ? `ΔP = ρ·g·h = ${num(r.dP,5)} Pa <em>(운전압력 상압)</em>`
+          : `ΔP = P<sub>g</sub> + ρ·g·h = ${Math.round(r.Pg).toLocaleString()} + ${Math.round(r.dPhead).toLocaleString()} = <b>${Math.round(r.dP).toLocaleString()} Pa</b>`)}</p>
+      ${(!r.isATM&&s.dPmode==="head"&&r.popOk&&r.dPhead>0&&r.Pg>0)
+        ? `<p class="hint">운전압력이 지배항입니다. 액주만 썼을 때 대비 W 가 <b>${fx(Math.sqrt(r.dP/r.dPhead),2)}배</b>, 범위가 <b>${fx(Math.pow(r.dP/r.dPhead,0.5*0.4976),2)}배</b>입니다.</p>` : ""}
       <details><summary style="cursor:pointer;font-size:11.5px;color:var(--blue);font-weight:600;margin:6px 0">누출시간 선정 참고 — 검출·차단 시스템 등급별 누출시간</summary>
         <p class="hint" style="margin-top:4px">&lt;표 1&gt; 검출 및 차단시스템의 등급결정 기준</p>
         ${tblDet()}
@@ -1256,12 +1494,13 @@ function renderSrcPane(){
         ${tblT(s.t,true)}
       </details>`;
     }
-  }else{
-    h+=`<div class="row">${F("용기 내부압력 P(MPa abs)","src.P_MPa","number")}${F("유체 절대온도 T(K)","src.T_gas","number")}</div>
-    ${F("압축계수 Z","src.Z","number")}
+  }else if(gas){
+    h+=`<div class="row">${F("유체 절대온도 T(K)","src.T_gas","number")}${F("압축계수 Z","src.Z","number")}</div>
+    <p class="hint">용기 내부압력 <i>P</i> 는 위 <b>운전압력</b>을 절대압으로 환산해 씁니다 —
+     현재 <b>${r.popOk?Math.round(r.Pabs).toLocaleString()+" Pa(abs)":"-"}</b>. 지침 기호표의 <i>P</i> = "용기의 내부압력"이 절대압이기 때문입니다.</p>
     <p class="hint">Z 는 이상기체에서 1.0 입니다. 중간 압력까지는 1.0 이 합리적인 근사값이지만,
      <b>500 kPa(5 bar) 이상</b>에서는 가스 특성 데이터북의 실제 압축계수를 적용해야 합니다.
-     ${(+s.P_MPa)*1000>=500?`<b style="color:var(--red)">현재 ${num((+s.P_MPa)*1000,4)} kPa 이므로 실제 Z 확인이 필요합니다.</b>`:""}</p>
+     ${r.popOk&&r.Pabs>=5e5?`<b style="color:var(--red)">현재 ${num(r.Pabs/1000,4)} kPa 이므로 실제 Z 확인이 필요합니다.</b>`:""}</p>
     <p class="hint">γ(단열팽창 폴리트로프 지수)는 물질 탭에서 설정합니다. 현재 γ = ${m?m.gamma:"-"}</p>`;
   }
   h+=`</fieldset>`;
@@ -1318,9 +1557,10 @@ function syncSide(){
   const pane=$("#pane-src");
   const old=pane.querySelector(".readout");
   if(old){
-    const liq=s.상태==="liquid";
     old.innerHTML=`<h4>계산 결과</h4><dl>
-     ${liq?`<dt>액체 누출률 W</dt><dd>${num(r.W,4)} kg/s</dd><dt>풀 표면적 Ap</dt><dd>${num(r.Ap,4)} m²</dd>`
+     ${r.mode==="liquid"?`<dt>액체 누출률 W</dt><dd>${num(r.W,4)} kg/s</dd><dt>풀 표면적 Ap</dt><dd>${num(r.Ap,4)} m²</dd>`
+      :r.mode==="flash"?`<dt>액체 누출률 W</dt><dd>${num(r.W,4)} kg/s</dd><dt>가스 누출률 Wg</dt><dd>${num(r.Wg,3)} kg/s</dd>`
+      :r.mode==="given"?`<dt>누출률 Wg <em>(제조사)</em></dt><dd>${num(r.Wg,3)} kg/s</dd>`
       :`<dt>임계압력 Pc</dt><dd>${num(r.Pc,4)} Pa</dd><dt>가스 누출률 Wg</dt><dd>${num(r.Wg,3)} kg/s</dd>`}
      <dt>부피증발률 Qg</dt><dd>${num(r.Qg,3)} m³/s</dd>
      <dt><b>누출특성</b></dt><dd><b>${num(r.C,3)} m³/s</b></dd>
@@ -1402,7 +1642,7 @@ $("#fileIn").addEventListener("change",ev=>{
   const rd=new FileReader();
   rd.onload=()=>{try{const o=JSON.parse(rd.result);
     Object.assign(S,{doc:o.doc,mats:o.mats,srcs:o.srcs,selMat:0,selSrc:0});
-    fillDocDefaults(S.doc);renderPanes();
+    fillDocDefaults(S.doc);S.srcs.forEach(fillSrcDefaults);renderPanes();
   }catch(err){alert("파일을 읽을 수 없습니다: "+err.message)}};
   rd.readAsText(f);
 });
