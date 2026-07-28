@@ -107,8 +107,8 @@ table.pick tr.on td.lab{box-shadow:inset 3px 0 0 var(--mark)}
 
 /* ---------- report ---------- */
 #report{width:210mm;margin:0 auto}
-.page{width:210mm;min-height:297mm;background:#fff;padding:18mm 15mm 14mm;margin:0 auto 14px;box-shadow:0 2px 14px rgba(20,30,40,.18);font-family:var(--doc);color:#000;font-size:10.5pt;line-height:1.6;position:relative}
-.page .pno{position:absolute;bottom:8mm;right:15mm;font-size:8.5pt;color:#555;font-family:var(--mono)}
+.page{width:210mm;min-height:297mm;background:#fff;margin:0 auto 14px;box-shadow:0 2px 14px rgba(20,30,40,.18);font-family:var(--doc);color:#000;font-size:10.5pt;line-height:1.6;position:relative}
+.page .pno{position:absolute;bottom:8mm;font-size:8.5pt;color:#555;font-family:var(--mono)}
 
 /* 블록 = 페이지에 채워 넣는 최소 단위 */
 .blk{display:flow-root;position:relative}
@@ -198,13 +198,15 @@ table.spec td.k{background:#fff;font-weight:600}
   .work{display:block;overflow:visible;height:auto}
   .stage{overflow:visible;padding:0;background:#fff}
   #report{width:auto;margin:0;zoom:1}
-  /* 폭·높이를 고정하지 않는다. 브라우저 여백 설정이 무엇이든 인쇄영역에 맞춰 흐른다 */
+  /* 위·아래 여백은 @page 로, 좌·우 여백은 padding 으로 준다(#pgstyle 이 실제 값을 넣는다).
+     세로 여백을 @page 에 두면 브라우저가 인쇄영역을 그만큼 줄여서 잡으므로,
+     한 장 분량이 인쇄영역을 넘어 중간에서 잘리는 일이 없다. */
   .page{width:auto;max-width:100%;min-height:0;height:auto;margin:0;
-        padding:14mm 13mm 16mm;box-shadow:none;position:relative;
+        box-shadow:none;position:relative;
         page-break-after:always;break-after:page;page-break-inside:auto}
   .page:last-child{page-break-after:auto;break-after:auto}
   /* 흐름에서 빼둔다. 흐름에 두면 마지막 줄 뒤 여백까지 밀려 빈 장이 생긴다 */
-  .page .pno{position:absolute;bottom:6mm;right:13mm;margin:0;text-align:right}
+  .page .pno{position:absolute;bottom:2mm;margin:0;text-align:right}
   .cover{min-height:215mm}
   .itctl,#measure{display:none!important}
   .it.brk::before,.page.over::after{display:none!important}
@@ -220,6 +222,7 @@ table.spec td.k{background:#fff;font-weight:600}
 @media screen and (max-width:1180px){.work{grid-template-columns:1fr}.side{max-height:46vh}#report{zoom:.72}}
 @media screen and (max-width:1560px) and (min-width:1181px){#report{zoom:.86}}
 </style>
+<style id="pgstyle"></style>
 </head>
 <body>
 <div class="app">
@@ -294,13 +297,15 @@ const S={
   doc:{회사:"",소재지:"",년월:thisYM(),작성자:"",
     개요:"인화성물질을 쓰는 검토대상 설비에 대한 폭발 위험 지역 구분에 대해서 산업안전보건규칙 제230조에 따른 '산업표준화법'과 참고 문헌으로, IEC 60079-10-1(2020), KOSHA Guide E-180-2020(가스폭발위험장소의 설정에 관한 기술지침)을 Reference로 적용하였음",
     물질비고:"",
-    하단여유:5,breaks:[]},
+    여백상:18,여백하:14,여백좌:15,여백우:15,하단여유:5,breaks:[]},
   mats:[],srcs:[],selMat:0,selSrc:0
 };
 /* 예전에 저장한 설정 파일에는 아래 항목이 없으므로 기본값을 채운다 */
 function fillDocDefaults(d){
   if(!d)return;
   if(!isFinite(+d.하단여유))d.하단여유=5;
+  const MG={여백상:18,여백하:14,여백좌:15,여백우:15};
+  for(const k in MG){const v=+d[k];d[k]=(isFinite(v)&&v>=0&&v<=60)?v:MG[k]}
   if(!Array.isArray(d.breaks))d.breaks=[];
 }
 S.mats.push(newMat("톨루엔"));
@@ -322,9 +327,10 @@ function num(x,sig){sig=sig||3;
 function fx(x,d){return isFinite(x)?Number(x).toFixed(d):"-"}
 
 /* ===================== 계산 엔진 ===================== */
-// 희석등급 경계선 (KOSHA E-180 부속서 C 그림 C.1 디지타이징)
-const DIL_HI={a:15.4814,b:1.01456};   // uw = a·C^b  (위쪽 = 고희석)
-const DIL_LO={a:0.047638,b:0.98763};  // uw = a·C^b  (아래쪽 = 저희석)
+/* 희석등급 경계선 — 지침 부속서 C <그림 1> 의 두 직선.
+   로그-로그에서 기울기가 정확히 1 이므로 uw = a·C 꼴이다. */
+const DIL_HI={a:13.4,b:1};      // uw = a·C  (위쪽 = 고희석)
+const DIL_LO={a:0.0458,b:1};    // uw = a·C  (아래쪽 = 저희석)
 // 범위 곡선 (부속서 D 그림 D.1)
 const EXT={무거운가스:{a:8.5725,b:0.48750},저속확산:{a:4.2341,b:0.49757},고속제트:{a:2.2036,b:0.52183}};
 
@@ -690,10 +696,27 @@ function matOf(s){return S.mats.find(m=>m.id===s.matId)||S.mats[0]}
 
 const MMPX=96/25.4;                    // 1 mm 를 px 로
 const PAGE_GAP_MM=6;                   // 한 장 안에서 블록 사이 간격
-const FULL_MM=297-18-14;               // A4 한 장의 본문 높이(=265mm)
+function mg(k,def){const v=+S.doc[k];return (isFinite(v)&&v>=0&&v<=60)?v:def}
+function pageMargins(){return {t:mg("여백상",18),b:mg("여백하",14),l:mg("여백좌",15),r:mg("여백우",15)}}
+const PNO_MM=9;                        // 쪽번호 자리 (인쇄영역 맨 아래에서 떼어 둔다)
+function contentMM(){const m=pageMargins();return 297-m.t-m.b}   // 인쇄영역 높이
+function usableMM(){return Math.max(30,contentMM()-PNO_MM)}      // 본문이 실제로 쓰는 높이
 function budgetPx(){                   // 하단 여유를 뺀 채움 한도
   const slack=Math.max(0,Math.min(60,+S.doc.하단여유||0));
-  return (FULL_MM-slack)*MMPX;
+  return Math.max(30,usableMM()-slack)*MMPX;
+}
+/* 화면 미리보기와 인쇄가 같은 지면을 쓰도록 여백을 한 곳에서 만들어 넣는다. */
+function applyPageStyle(){
+  const m=pageMargins(), el=$("#pgstyle"); if(!el)return;
+  el.textContent=
+    `.page{padding:${m.t}mm ${m.r}mm ${m.b}mm ${m.l}mm}`+
+    `.page .pno{right:${m.r}mm}`+
+    `.cover{min-height:${usableMM()-6}mm}`+
+    `@media print{`+
+      `@page{size:A4;margin:${m.t}mm 0 ${m.b}mm 0}`+
+      `.page{padding:0 ${m.r}mm ${PNO_MM}mm ${m.l}mm}`+
+      `.page .pno{right:${m.r}mm}`+
+    `}`;
 }
 /* 제목류는 뒤 내용과 떨어뜨리지 않는다(페이지 끝에 혼자 남지 않게) */
 function isKeep(el){
@@ -710,11 +733,12 @@ function renderReport(){               // 입력 중 과도한 재계산을 막�
   _raf=requestAnimationFrame(()=>{_raf=null;buildReport()});
 }
 function buildReport(){
+  applyPageStyle();                    // 측정 전에 지면 크기를 확정한다
   BLK=[];
   collectBlocks();
   const blocks=BLK;
   const brk=new Set(S.doc.breaks||[]);
-  const BUDGET=budgetPx(), FULL=FULL_MM*MMPX, GAP=PAGE_GAP_MM*MMPX;
+  const BUDGET=budgetPx(), FULL=usableMM()*MMPX, GAP=PAGE_GAP_MM*MMPX;
 
   /* 1) 측정 — 블록을 이루는 요소 하나하나의 높이를 잰다 */
   let mez=$("#measure");
@@ -737,28 +761,35 @@ function buildReport(){
 
   /* 2) 한 장에 들어가는 만큼 채워 넣는다 */
   const pages=[];let cur=[],curH=0,curKey=null;
-  const flush=()=>{if(cur.length){pages.push(cur);cur=[];curH=0;curKey=null}};
+  const KEEP_MAX=45*MMPX;              // 다음 장으로 함께 넘길 제목류의 최대 높이
+  const startPage=seed=>{              // seed 를 얹은 채로 새 장을 시작하고 높이를 다시 센다
+    cur=seed||[];curKey=null;curH=0;
+    if(cur.length){
+      curH=cur[0].headH;let prev=null;
+      cur.forEach(c=>{if(prev!==null&&prev!==c.b.key)curH+=GAP;curH+=c.h;prev=c.b.key});
+      curKey=cur[cur.length-1].b.key;
+    }
+  };
+  const flush=seed=>{if(cur.length)pages.push(cur);startPage(seed)};
   items.forEach(it=>{
     const b=it.b;
     // 줄 단위 강제 나눔 : 이 줄에 표시가 있거나, 블록 첫 줄에 블록 단위 표시가 있을 때
     it.forced = brk.has(it.key) || (it.first&&brk.has(b.key)) || (it.first&&b.alone);
     if(cur.length&&it.forced)flush();
     let gap=(cur.length&&curKey!==b.key)?GAP:0;
-    if(cur.length&&curH+gap+it.h>BUDGET)flush();
+    if(cur.length&&curH+gap+it.h>BUDGET){
+      /* 페이지 끝에 제목류만 남으면 다음 장으로 같이 넘긴다.
+         넘긴 높이를 새 장에 바로 반영해야 그 장이 넘치지 않는다. */
+      let k=cur.length,moveH=0;
+      while(k>0&&cur[k-1].keep){moveH+=cur[k-1].h;k--}
+      flush(k>0&&k<cur.length&&moveH<KEEP_MAX?cur.splice(k):null);
+      gap=(cur.length&&curKey!==b.key)?GAP:0;
+    }
     if(!cur.length){gap=0;curH=it.headH}          // 새 페이지 맨 위에는 머리말이 붙는다
     curH+=gap+it.h;cur.push(it);curKey=b.key;
     if(b.alone)flush();
   });
   flush();
-  /* 제목만 페이지 끝에 남는 경우 다음 장으로 넘긴다 */
-  for(let i=0;i<pages.length;i++){
-    const pg=pages[i];let k=pg.length;
-    while(k>0&&pg[k-1].keep)k--;
-    if(k>0&&k<pg.length){
-      const moved=pg.splice(k);
-      if(i+1<pages.length)pages[i+1]=moved.concat(pages[i+1]); else pages.push(moved);
-    }
-  }
 
   /* 3) 출력 — 같은 블록에서 온 연속 요소끼리 다시 묶는다 */
   let pn=0,h="";
@@ -1031,6 +1062,17 @@ function renderDocPane(){
     <label class="f"><span>개요 문구 <em>(사업장명 뒤에 이어짐)</em></span><textarea data-path="doc.개요">${esc(S.doc.개요)}</textarea></label>
     <label class="f"><span>물질 선정 비고 <em>(비우면 계산서에 표시되지 않음)</em></span><textarea data-path="doc.물질비고" placeholder="예) 취급 물질은 다양하나 폭발하한과 인화점이 가장 낮은 ○○○로 통일하여 보수적으로 검토함.">${esc(S.doc.물질비고)}</textarea></label>
   </fieldset>
+  <fieldset><legend>용지 여백 (A4)</legend>
+    <div class="row">${F("위 여백 (mm)","doc.여백상","number",'min="0" max="60"')}${F("아래 여백 (mm)","doc.여백하","number",'min="0" max="60"')}</div>
+    <div class="row">${F("왼쪽 여백 (mm)","doc.여백좌","number",'min="0" max="60"')}${F("오른쪽 여백 (mm)","doc.여백우","number",'min="0" max="60"')}</div>
+    <p class="hint">본문 영역 <b>${210-mg("여백좌",15)-mg("여백우",15)} × ${usableMM()} mm</b> (쪽번호 자리 ${PNO_MM}mm 제외).
+     미리보기와 인쇄물이 같은 지면을 씁니다.</p>
+    <div style="display:flex;gap:6px">
+      <button class="mini" data-act="mg" data-v="18,14,15,15">기본값</button>
+      <button class="mini" data-act="mg" data-v="20,20,20,20">넉넉히 20mm</button>
+      <button class="mini" data-act="mg" data-v="12,12,12,12">빽빽하게 12mm</button>
+    </div>
+  </fieldset>
   <fieldset><legend>페이지 나눔</legend>
     ${F("페이지 하단 여유 (mm)","doc.하단여유","number",'min="0" max="60"')}
     <p class="hint">여유를 늘리면 한 장에 덜 채워지고, 0 에 가까울수록 빽빽하게 채워집니다.</p>
@@ -1044,7 +1086,10 @@ function renderDocPane(){
   <div class="readout"><h4>출력 순서</h4>
    <div style="font-size:11.5px;line-height:1.9;color:var(--ink-2)">
    표지 → 1. 개요·용어정의 → 2. 계산식 → 3. 폭발장소 구분 → 4.1 물질목록(Part 1) → 4.2 누출원목록(Part 2) → 설비별 계산결과(①~⑨)</div>
-   <p class="hint" style="margin-top:8px">PDF 다운로드를 누르면 인쇄 대화상자가 열립니다.<br>대상 <b>PDF로 저장</b> · 용지 <b>A4</b> · 배율 <b>기본(100%)</b> · 배경 그래픽 <b>켬</b>.<br>여백은 기본/없음 어느 쪽이어도 맞게 출력됩니다. 배율만 "맞춤설정"이 아닌 <b>기본</b>인지 확인하세요.</p>
+   <p class="hint" style="margin-top:8px">PDF 다운로드를 누르면 인쇄 대화상자가 열립니다.<br>
+    대상 <b>PDF로 저장</b> · 용지 <b>A4</b> · 배율 <b>기본(100%)</b> · 배경 그래픽 <b>켬</b> · 여백 <b>기본</b>.<br>
+    여백은 위 「용지 여백」에서 정한 값이 그대로 인쇄됩니다. 대화상자에서 여백을 <b>맞춤설정</b>으로 바꾸면
+    그 값이 우선하므로 <b>기본</b> 또는 <b>없음</b>으로 두세요.</p>
   </div>`;
 }
 function renderMatPane(){
@@ -1169,6 +1214,7 @@ document.addEventListener("input",e=>{
   if(el.tagName==="SELECT"||el.dataset.live){
     if(p.startsWith("doc."))renderDocPane(); else {renderSrcPane();renderMatPane()}
   }
+  if(/^doc\.여백/.test(p))applyPageStyle();
   renderReport();
   if(el.tagName!=="SELECT"&&!el.dataset.live){syncSide()}
 });
@@ -1224,6 +1270,9 @@ document.addEventListener("click",e=>{
       if(i<0)S.doc.breaks.push(k); else S.doc.breaks.splice(i,1);
       renderDocPane();renderReport();}break;
     case"clrbrk":S.doc.breaks=[];renderDocPane();renderReport();break;
+    case"mg":{const p=String(v).split(",").map(Number);
+      S.doc.여백상=p[0];S.doc.여백하=p[1];S.doc.여백좌=p[2];S.doc.여백우=p[3];
+      renderDocPane();renderReport();}break;
     case"rel":s.등급=v;
       if(v!=="연속"&&s.poolMode==="tank")s.poolMode="spill";   // 탱크 액표면은 연속 전용
       renderSrcPane();renderReport();break;
@@ -1242,6 +1291,7 @@ document.querySelectorAll(".tabs button").forEach(btn=>btn.addEventListener("cli
 }));
 $("#btnPdf").addEventListener("click",()=>{
   document.title=`방폭계산서_${S.doc.회사}_${new Date().toISOString().slice(0,10)}`;
+  buildReport();          // 대기 중인 재계산이 있어도 최신 상태로 인쇄되게 한다
   window.print();
 });
 $("#btnSave").addEventListener("click",()=>{
@@ -1260,6 +1310,7 @@ $("#fileIn").addEventListener("change",ev=>{
   rd.readAsText(f);
 });
 
+applyPageStyle();
 renderPanes();
 </script>
 </body>
