@@ -116,14 +116,19 @@ table.pick tr.on td.lab{box-shadow:inset 3px 0 0 var(--mark)}
 /* 줄(요소) 하나 = 페이지 나눔을 지정할 수 있는 최소 단위 */
 .it{position:relative}
 .it.brk:not(.top)::before{content:"";position:absolute;left:0;right:0;top:-1mm;border-top:2px dashed var(--mark)}
-.itctl{position:absolute;top:0;right:-12mm;opacity:0;transition:opacity .12s;display:flex;flex-direction:column;gap:2px}
+/* 버튼을 가로로 눕혀 컨트롤 높이를 한 줄로 줄인다. 세로로 쌓으면 짧은 줄에서
+   컨트롤이 아래 줄까지 내려와 옆줄의 ✂ 를 잘못 누르게 된다.
+   또 마우스가 올라간 줄의 컨트롤만 클릭을 받는다. */
+.itctl{position:absolute;top:50%;transform:translateY(-50%);right:-13.5mm;
+  opacity:0;transition:opacity .12s;display:flex;gap:3px;pointer-events:none;z-index:1}
 .spc{pointer-events:none}
-.it:hover>.itctl,.itctl:hover{opacity:1}
-.itctl button{width:21px;height:21px;padding:0;border:1px solid var(--rule);background:#fff;border-radius:4px;
+.it:hover>.itctl{opacity:1;pointer-events:auto;z-index:6}
+.itctl button{width:19px;height:19px;padding:0;border:1px solid var(--rule);background:#fff;border-radius:4px;
   cursor:pointer;font-size:11px;line-height:1;color:var(--ink-2);font-family:var(--ui)}
 .itctl button:hover{border-color:var(--blue);color:var(--blue);background:var(--blue-soft)}
 .itctl button.on{background:var(--mark);border-color:var(--mark);color:#241000;font-weight:700}
-.it.brk>.itctl{opacity:1}
+.it.brk>.itctl,.it.spaced>.itctl{opacity:.55}
+.it.brk>.itctl{pointer-events:auto}
 .page.over{outline:1px dashed #c0392b;outline-offset:3px}
 .page.over::after{content:"이 블록은 A4 한 장을 넘습니다 — 인쇄 시 자동으로 나뉩니다";
   position:absolute;left:15mm;bottom:4mm;font-size:8pt;color:#c0392b;font-family:var(--ui)}
@@ -875,7 +880,7 @@ function itemHtml(it,brk,atTop){
   const on=brk.has(it.key)||(it.first&&brk.has(it.b.key));
   const k=brk.has(it.b.key)&&it.first?it.b.key:it.key;   // 예전 블록 단위 표시도 그대로 해제되게
   const sp=it.space||0;
-  return `<div class="it${on?" brk":""}${atTop?" top":""}">`
+  return `<div class="it${on?" brk":""}${sp?" spaced":""}${atTop?" top":""}">`
     +(sp?`<div class="spc" style="height:${sp*SPACE_MM}mm"></div>`:"")
     +it.html
     +`<span class="itctl">`
