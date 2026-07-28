@@ -289,9 +289,8 @@ function newSrc(n){
 }
 function uid(){return Math.random().toString(36).slice(2,9)}
 
-function thisYM(){const d=new Date();return d.getFullYear()+". "+String(d.getMonth()+1).padStart(2,"0")+"."}
 const S={
-  doc:{회사:"",소재지:"",년월:thisYM(),작성자:"",
+  doc:{회사:"",소재지:"",년월:"",작성자:"",
     개요:"인화성물질을 쓰는 검토대상 설비에 대한 폭발 위험 지역 구분에 대해서 산업안전보건규칙 제230조에 따른 '산업표준화법'과 참고 문헌으로, IEC 60079-10-1(2020), KOSHA Guide E-180-2020(가스폭발위험장소의 설정에 관한 기술지침)을 Reference로 적용하였음",
     물질비고:"",
     여백상:18,여백하:14,여백좌:15,여백우:15,breaks:[]},
@@ -816,7 +815,7 @@ function collectBlocks(){
   const d=S.doc;
   /* 표지 */
   pageAlone(`<div class="cover"><div class="en">Calculation for Hazardous Area<br>Classification</div>
-   <div class="rule"></div><div class="dt">${esc(d.년월)}</div><div class="co">${ph(d.회사,"(사업장명)")}</div>
+   <div class="rule"></div><div class="dt">${ph(d.년월,"(작성연월)")}</div><div class="co">${ph(d.회사,"(사업장명)")}</div>
    ${d.작성자?`<div style="margin-top:8mm;font-size:11pt">작성 : ${esc(d.작성자)}</div>`:""}</div>`,"cover");
   /* 1. 개요 */
   page(`<h2 class="sec">1. 개 요</h2>
@@ -1049,7 +1048,7 @@ function renderDocPane(){
   <fieldset><legend>문서 정보</legend>
     ${F("사업장명","doc.회사","text",'placeholder="예) ○○산업(주)"')}
     ${F("사업장 소재지","doc.소재지","text",'placeholder="예) 경기도 ○○시 ○○동 000-0"')}
-    <div class="row">${F("작성 연월","doc.년월")}${F("작성자","doc.작성자")}</div>
+    <div class="row">${F("작성 연월","doc.년월","text",'placeholder="예) 2026. 07."')}${F("작성자","doc.작성자")}</div>
     <label class="f"><span>개요 문구 <em>(사업장명 뒤에 이어짐)</em></span><textarea data-path="doc.개요">${esc(S.doc.개요)}</textarea></label>
     <label class="f"><span>물질 선정 비고 <em>(비우면 계산서에 표시되지 않음)</em></span><textarea data-path="doc.물질비고" placeholder="예) 취급 물질은 다양하나 폭발하한과 인화점이 가장 낮은 ○○○로 통일하여 보수적으로 검토함.">${esc(S.doc.물질비고)}</textarea></label>
   </fieldset>
