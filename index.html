@@ -94,6 +94,23 @@ table.pick tr.on td.lab{box-shadow:inset 3px 0 0 var(--mark)}
 #report{width:210mm;margin:0 auto}
 .page{width:210mm;min-height:297mm;background:#fff;padding:18mm 15mm 14mm;margin:0 auto 14px;box-shadow:0 2px 14px rgba(20,30,40,.18);font-family:var(--doc);color:#000;font-size:10.5pt;line-height:1.6;position:relative}
 .page .pno{position:absolute;bottom:8mm;right:15mm;font-size:8.5pt;color:#555;font-family:var(--mono)}
+
+/* 블록 = 페이지에 채워 넣는 최소 단위 */
+.blk{display:flow-root;position:relative}
+.blk+.blk{margin-top:6mm}
+.blk.brk::before{content:"";position:absolute;left:0;right:0;top:-3mm;border-top:2px dashed var(--mark)}
+.blkctl{position:absolute;top:0;right:-13mm;opacity:.22;transition:opacity .15s}
+.blk:hover .blkctl{opacity:1}
+.blkctl button{width:23px;height:23px;padding:0;border:1px solid var(--rule);background:#fff;border-radius:4px;
+  cursor:pointer;font-size:12px;line-height:1;color:var(--ink-2);font-family:var(--ui)}
+.blkctl button:hover{border-color:var(--blue);color:var(--blue);background:var(--blue-soft)}
+.blkctl button.on{background:var(--mark);border-color:var(--mark);color:#241000;font-weight:700;opacity:1}
+.page.over{outline:1px dashed #c0392b;outline-offset:3px}
+.page.over::after{content:"이 블록은 A4 한 장을 넘습니다 — 인쇄 시 자동으로 나뉩니다";
+  position:absolute;left:15mm;bottom:4mm;font-size:8pt;color:#c0392b;font-family:var(--ui)}
+/* 높이 측정용 숨김 시트 */
+#measure{position:absolute!important;left:-99999px;top:0;visibility:hidden;pointer-events:none;
+  width:210mm;min-height:0;height:auto;margin:0;box-shadow:none}
 .cover{display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;min-height:261mm}
 .cover .en{font-size:26pt;font-weight:700;line-height:1.35;letter-spacing:-.01em}
 .cover .dt{margin-top:26mm;font-size:14pt}
@@ -131,7 +148,7 @@ table.spec td.k{background:#fff;font-weight:600}
 .colhit{background:#fdeedd!important}
 
 /* formula */
-.fm{font-family:"Cambria Math","Times New Roman",serif;font-size:12pt;margin:6px 0 6px 10px}
+.fm{display:block;font-family:"Cambria Math","Times New Roman",serif;font-size:12pt;margin:6px 0 6px 10px}
 .fm i,.v{font-style:italic;font-family:"Cambria Math","Times New Roman",serif}
 .frac{display:inline-block;vertical-align:middle;text-align:center;margin:0 3px}
 .frac>span{display:block;padding:0 4px}
@@ -166,6 +183,10 @@ table.spec td.k{background:#fff;font-weight:600}
   .page:last-child{page-break-after:auto;break-after:auto}
   .page .pno{position:static;display:block;text-align:right;margin-top:8mm}
   .cover{min-height:215mm}
+  .blkctl,#measure{display:none!important}
+  .blk.brk::before,.page.over::after{display:none!important}
+  .page.over{outline:0}
+  .blk{break-inside:auto;page-break-inside:auto}
   figure,table.spec,.sumbox,table.doc{break-inside:avoid;page-break-inside:avoid}
   svg.chart{width:100%;max-width:140mm;height:auto}
   svg.zone{width:100%;max-width:160mm;height:auto}
@@ -181,7 +202,6 @@ table.spec td.k{background:#fff;font-weight:600}
     <h1>방폭계산서 작성도구</h1>
     <span class="std">KOSHA GUIDE E-180-2020 · KS C IEC 60079-10-1</span>
     <span class="sp"></span>
-    <button id="btnSample">예시 불러오기</button>
     <button id="btnSave">설정 저장</button>
     <button id="btnLoad">설정 불러오기</button>
     <input type="file" id="fileIn" accept=".json" hidden>
@@ -248,9 +268,17 @@ function thisYM(){const d=new Date();return d.getFullYear()+". "+String(d.getMon
 const S={
   doc:{회사:"",소재지:"",년월:thisYM(),작성자:"",
     개요:"인화성물질을 쓰는 검토대상 설비에 대한 폭발 위험 지역 구분에 대해서 산업안전보건규칙 제230조에 따른 '산업표준화법'과 참고 문헌으로, IEC 60079-10-1(2020), KOSHA Guide E-180-2020(가스폭발위험장소의 설정에 관한 기술지침)을 Reference로 적용하였음",
-    물질비고:""},
+    물질비고:"",
+    나눔모드:"auto",하단여유:5,breaks:[]},
   mats:[],srcs:[],selMat:0,selSrc:0
 };
+/* 예전에 저장한 설정 파일에는 아래 항목이 없으므로 기본값을 채운다 */
+function fillDocDefaults(d){
+  if(!d)return;
+  if(d.나눔모드!=="auto"&&d.나눔모드!=="each")d.나눔모드="auto";
+  if(!isFinite(+d.하단여유))d.하단여유=5;
+  if(!Array.isArray(d.breaks))d.breaks=[];
+}
 S.mats.push(newMat("톨루엔"));
 S.srcs.push(newSrc());
 S.srcs[0].matId=S.mats[0].id;
@@ -603,78 +631,176 @@ const DEF={
 };
 </script>
 <script>
-/* ===================== 계산서 렌더링 ===================== */
-let PG=0;
-function page(inner,cover){PG++;return `<section class="page${cover?" ":""}">${inner}<div class="pno">- ${PG} -</div></section>`}
+/* ===================== 계산서 렌더링 =====================
+   블록(=논리적 한 덩어리)을 만들어 두고, 실제 높이를 재서 A4 한 장에
+   들어가는 만큼 이어 붙인다. 블록마다 강제 페이지 나눔을 지정할 수 있다. */
+let BLK=[];
+/* head 는 그 블록이 페이지 맨 위로 올 때만 붙는 머리말(설비명 등) */
+function page(inner,key,head){BLK.push({key:key||("b"+BLK.length),html:inner,head:head||"",alone:false})}
+function pageAlone(inner,key){BLK.push({key:key||("b"+BLK.length),html:inner,head:"",alone:true})}
 function matOf(s){return S.mats.find(m=>m.id===s.matId)||S.mats[0]}
 
-function renderReport(){
-  PG=0;
+const MMPX=96/25.4;                    // 1 mm 를 px 로
+const PAGE_GAP_MM=6;                   // 한 장 안에서 블록 사이 간격
+const FULL_MM=297-18-14;               // A4 한 장의 본문 높이(=265mm)
+function budgetPx(){                   // 하단 여유를 뺀 채움 한도
+  const slack=Math.max(0,Math.min(60,+S.doc.하단여유||0));
+  return (FULL_MM-slack)*MMPX;
+}
+/* 제목류는 뒤 내용과 떨어뜨리지 않는다(페이지 끝에 혼자 남지 않게) */
+function isKeep(el){
+  if(/^H[1-6]$/.test(el.tagName))return true;
+  if(el.classList&&(el.classList.contains("item")||el.classList.contains("fm")))return true;
+  if(el.tagName==="P"&&el.children.length===1&&el.firstElementChild.tagName==="B"
+     &&el.textContent.trim()===el.firstElementChild.textContent.trim())return true;
+  return false;
+}
+
+let _raf=null;
+function renderReport(){               // 입력 중 과도한 재계산을 막기 위해 프레임 단위로 묶는다
+  if(_raf)cancelAnimationFrame(_raf);
+  _raf=requestAnimationFrame(()=>{_raf=null;buildReport()});
+}
+function buildReport(){
+  BLK=[];
+  collectBlocks();
+  const blocks=BLK;
+  const mode=S.doc.나눔모드==="each"?"each":"auto";
+  const brk=new Set(S.doc.breaks||[]);
+  const BUDGET=budgetPx(), FULL=FULL_MM*MMPX, GAP=PAGE_GAP_MM*MMPX;
+
+  /* 1) 측정 — 블록을 이루는 요소 하나하나의 높이를 잰다 */
+  let mez=$("#measure");
+  if(!mez){mez=document.createElement("section");mez.id="measure";mez.className="page";document.body.appendChild(mez)}
+  mez.innerHTML=blocks.map(b=>`<div class="blk">${b.head}</div><div class="blk">${b.html}</div>`).join("");
+  const kids=mez.children, items=[];
+  blocks.forEach((b,i)=>{
+    const headH=kids[2*i].offsetHeight, body=kids[2*i+1];
+    const box=body.getBoundingClientRect();
+    const cs=Array.prototype.slice.call(body.children);
+    if(!cs.length){items.push({b,headH,html:b.html,h:box.height,first:true,keep:false});return}
+    const tops=cs.map(c=>c.getBoundingClientRect().top);
+    cs.forEach((c,j)=>{
+      let h=(j<cs.length-1?tops[j+1]:box.bottom)-tops[j];
+      if(j===0)h+=tops[0]-box.top;
+      items.push({b,headH,html:c.outerHTML,h,first:j===0,keep:isKeep(c)});
+    });
+  });
+  mez.innerHTML="";
+
+  /* 2) 한 장에 들어가는 만큼 채워 넣는다 */
+  const pages=[];let cur=[],curH=0,curKey=null;
+  const flush=()=>{if(cur.length){pages.push(cur);cur=[];curH=0;curKey=null}};
+  items.forEach(it=>{
+    const b=it.b;
+    if(cur.length&&it.first&&(b.alone||mode==="each"||brk.has(b.key)))flush();
+    let gap=(cur.length&&curKey!==b.key)?GAP:0;
+    if(cur.length&&curH+gap+it.h>BUDGET)flush();
+    if(!cur.length){gap=0;curH=it.headH}          // 새 페이지 맨 위에는 머리말이 붙는다
+    curH+=gap+it.h;cur.push(it);curKey=b.key;
+    if(b.alone)flush();
+  });
+  flush();
+  /* 제목만 페이지 끝에 남는 경우 다음 장으로 넘긴다 */
+  for(let i=0;i<pages.length;i++){
+    const pg=pages[i];let k=pg.length;
+    while(k>0&&pg[k-1].keep)k--;
+    if(k>0&&k<pg.length){
+      const moved=pg.splice(k);
+      if(i+1<pages.length)pages[i+1]=moved.concat(pages[i+1]); else pages.push(moved);
+    }
+  }
+
+  /* 3) 출력 — 같은 블록에서 온 연속 요소끼리 다시 묶는다 */
+  let pn=0,h="";
+  pages.forEach(pg=>{
+    const groups=[];
+    pg.forEach(it=>{
+      const g=groups[groups.length-1];
+      if(g&&g.b.key===it.b.key)g.items.push(it); else groups.push({b:it.b,items:[it]});
+    });
+    const tot=pg.reduce((a,it)=>a+it.h,0)+groups[0].items[0].headH+(groups.length-1)*GAP;
+    const over=tot>FULL+1;
+    pn++;
+    h+=`<section class="page${over?" over":""}">`
+      +groups.map((g,gi)=>`<div class="blk${brk.has(g.b.key)&&g.items[0].first?" brk":""}">`
+        +(gi===0?g.b.head:"")
+        +g.items.map(it=>it.html).join("")
+        +(g.b.alone||!g.items[0].first?"":blkCtl(g.b.key,brk.has(g.b.key)))
+        +`</div>`).join("")
+      +`<div class="pno">- ${pn} -</div></section>`;
+    if(over)pn+=Math.ceil(tot/FULL)-1;   // 한 장을 넘는 요소는 인쇄 시 여러 장이 된다
+  });
+  $("#report").innerHTML=h;
+}
+function blkCtl(k,on){
+  return `<div class="blkctl"><button data-act="brk" data-k="${k}" class="${on?"on":""}"
+   title="${on?"강제 페이지 나눔 해제 — 앞 블록에 이어 붙입니다":"이 블록을 새 페이지에서 시작합니다"}">${on?"⏏":"✂"}</button></div>`;
+}
+
+function collectBlocks(){
   const d=S.doc;
-  let h="";
   /* 표지 */
-  PG++;
-  h+=`<section class="page"><div class="cover"><div class="en">Calculation for Hazardous Area<br>Classification</div>
+  pageAlone(`<div class="cover"><div class="en">Calculation for Hazardous Area<br>Classification</div>
    <div class="rule"></div><div class="dt">${esc(d.년월)}</div><div class="co">${ph(d.회사,"(사업장명)")}</div>
-   ${d.작성자?`<div style="margin-top:8mm;font-size:11pt">작성 : ${esc(d.작성자)}</div>`:""}</div></section>`;
+   ${d.작성자?`<div style="margin-top:8mm;font-size:11pt">작성 : ${esc(d.작성자)}</div>`:""}</div>`,"cover");
   /* 1. 개요 */
-  h+=page(`<h2 class="sec">1. 개 요</h2>
+  page(`<h2 class="sec">1. 개 요</h2>
    <p class="ind">${ph(d.회사,"(사업장명)")}의 ${esc(d.개요)}</p>
    <h3 class="sub">1.2 용어 정의</h3>
-   <p class="ind"><b>1) 누출등급</b></p>${tblRelDoc()}`);
+   <p class="ind"><b>1) 누출등급</b></p>${tblRelDoc()}`,"doc-1");
   /* 2) 누출구멍 + 3) 희석등급 */
-  h+=page(`<p class="ind"><b>2) 누출구멍 크기 및 누출원 반경</b></p>
+  page(`<p class="ind"><b>2) 누출구멍 크기 및 누출원 반경</b></p>
    <p class="ind2">누출구멍의 반경은 인화성 물질의 누출률과 폭발위험장소의 형태 및 범위를 결정한다.</p>
    <figure><figcaption>&lt;표 1&gt; 2차누출등급의 누출구멍 단면적(권고)</figcaption>${tblHole(-1,false,"doc tiny")}</figure>
    <p class="ind"><b>3) 희석등급</b></p>
    <p class="ind2">① <b>고희석</b>(High Dilution) 누출원 근처에서의 농도를 순간적으로 감소시키고 누출이 중단된 후, 사실상 지속되지 않는다.</p>
    <p class="ind2">② <b>중희석</b>(Medium Dilution) 누출이 진행되는 동안에는 누출농도를 안정된 상태로 제어할 수 있고, 누출이 중단된 후에는 더 이상 폭발성 가스분위기가 지속되지 않는다.</p>
-   <p class="ind2">③ <b>저희석</b>(Low Dilution) 누출이 진행되는 동안에 상당한 농도로 지속되고 누출이 정지된 후에도 인화성 분위기가 상당기간 동안 지속된다.</p>`);
+   <p class="ind2">③ <b>저희석</b>(Low Dilution) 누출이 진행되는 동안에 상당한 농도로 지속되고 누출이 정지된 후에도 인화성 분위기가 상당기간 동안 지속된다.</p>`,"doc-2");
   /* 희석 그래프 + 환기이용도 + 범위 그래프 */
-  h+=page(`<figure>${chartDilution(null)}</figure>
+  page(`<figure>${chartDilution(null)}</figure>
    <p class="ind"><b>4) 환기이용도</b></p>
    <p class="ind2">우수 : 환기가 실제적으로 지속되는 상태</p>
    <p class="ind2">양호 : 환기의 정상작동이 지속됨이 예측되는 상태, 빈번하지 않는 단기간 중단은 허용된다.</p>
    <p class="ind2">미흡 : 환기가 양호 또는 우수 기준을 충족하지 않지만, 장기간 중단이 발생하는 것으로 예상되지 않는 상태</p>
-   <figure>${chartExtent(null)}</figure>`);
+   <figure>${chartExtent(null)}</figure>`,"doc-3");
   /* 종별 표 + Temp class */
-  h+=page(`<p class="ind"><b>5) 폭발위험 장소의 종별의 추정</b></p>
+  page(`<p class="ind"><b>5) 폭발위험 장소의 종별의 추정</b></p>
    <p class="ind2">폭발위험장소의 구분은 폭발성 분위기의 생성빈도와 지속시간에 따라 다음과 같이 분류한다.</p>
    <figure><figcaption>&lt;표 1&gt; 누출 등급 및 환기유효성에 따른 폭발위험장소 설정</figcaption>${tblZone("","","",false)}</figure>
    <p class="ind"><b>6) Temp. class</b></p>
    <p class="ind2">폭발가스 발화온도에 의한 분류(KS C IEC 60079-14)</p>
-   ${["T1 : 450℃ 초과","T2 : 300℃ 초과","T3 : 200℃ 초과","T4 : 135℃ 초과","T5 : 100℃ 초과","T6 : 85℃ 초과"].map(t=>`<p class="ind3">${t}</p>`).join("")}`);
+   ${["T1 : 450℃ 초과","T2 : 300℃ 초과","T3 : 200℃ 초과","T4 : 135℃ 초과","T5 : 100℃ 초과","T6 : 85℃ 초과"].map(t=>`<p class="ind3">${t}</p>`).join("")}`,"doc-4");
   /* 2. 계산식 */
-  h+=page(`<h2 class="sec">2. 누출특성 및 희석등급 계산식</h2>
+  page(`<h2 class="sec">2. 누출특성 및 희석등급 계산식</h2>
    <h4 class="eq">액체의 누출률</h4>${EQ.liq}${DEF.liq}
    <h4 class="eq">증발 풀의 부피증발률</h4>${EQ.pool}${DEF.pool}
    <h4 class="eq">가스 또는 증기의 누출률</h4>
    <p class="ind">가스 용기의 내부압력이 임계압력(Pc)보다 높다면, 누출가스의 속도는 음속(SONIC, CHOCKED)이다.</p>
    <p class="ind"><b>1) 임계압력</b></p>${EQ.pc}
-   <div class="deflist"><b><i>P<sub>C</sub></i></b> : 임계압력 (Pa)<br><b><i>P<sub>a</sub></i></b> : 대기압 (101,325 Pa)<br><b><i>γ</i></b> : 단열팽창 폴리트로픽 지수(단위없음)</div>`);
-  h+=page(`<p class="ind"><b>2) 아음속누설(Non chocked)의 가스 누출률</b></p>${EQ.nonchoked}${DEF.gas}
-   <p class="ind"><b>3) 음속누설(Chocked)의 가스 누출량</b></p>${EQ.choked}${DEF.gas}`);
-  h+=page(`<h4 class="eq">누출특성</h4>${EQ.char}${DEF.char}
+   <div class="deflist"><b><i>P<sub>C</sub></i></b> : 임계압력 (Pa)<br><b><i>P<sub>a</sub></i></b> : 대기압 (101,325 Pa)<br><b><i>γ</i></b> : 단열팽창 폴리트로픽 지수(단위없음)</div>`,"doc-5");
+  page(`<p class="ind"><b>2) 아음속누설(Non chocked)의 가스 누출률</b></p>${EQ.nonchoked}${DEF.gas}
+   <p class="ind"><b>3) 음속누설(Chocked)의 가스 누출량</b></p>${EQ.choked}${DEF.gas}`,"doc-6");
+  page(`<h4 class="eq">누출특성</h4>${EQ.char}${DEF.char}
    <h2 class="sec" style="margin-top:18px">3. 폭발장소의 구분</h2>
-   <figure>${zoneHatchSvg()}</figure>`);
+   <figure>${zoneHatchSvg()}</figure>`,"doc-7");
   /* 4. 데이터시트 */
-  h+=page(`<h2 class="sec">4. 폭발 위험 장소 구분 데이터 시트</h2>
+  page(`<h2 class="sec">4. 폭발 위험 장소 구분 데이터 시트</h2>
    <h3 class="sub">4.1 위험성물질의 목록 및 특성</h3>
    ${String(d.물질비고||"").trim()?`<p class="ind" style="font-size:9.5pt">1) ${esc(d.물질비고)}</p>`:""}
    <p style="font-size:9pt;margin-top:10px">Explosion Area Classification Data Sheet – Part 1 : Flammable material list and Characteristics</p>
    <p style="font-size:9pt">Plant Name : ${ph(d.회사,"(사업장명)")}<br>Plant Location : ${ph(d.소재지,"(소재지)")}</p>
-   ${part1Table()}`);
-  h+=page(`<h3 class="sub">4.2 누출원 목록</h3>
+   ${part1Table()}`,"doc-8");
+  page(`<h3 class="sub">4.2 누출원 목록</h3>
    <p style="font-size:9pt">Explosion Area Classification Data Sheet – Part 2 : List of source of release</p>
    <p style="font-size:9pt">Plant Name : ${ph(d.회사,"(사업장명)")}<br>Plant Location : ${ph(d.소재지,"(소재지)")}</p>
    ${part2Table()}
    <div style="font-size:8.5pt;margin-top:6px;line-height:1.6">
    a) C-연속, S-2차, P-1차<br>b) 1부 목록 인용번호<br>c) G-가스, L-액체, LG-액화 가스, S-고체<br>
    d) N-자연환기, A-강제환기, AG-강제 전체 환기, AL-국소 배기<br>e) 부속서 C 참조<br>
-   f) 사용된 코드/표준번호, 계산기준 표시(G-우수, F-양호, P-미흡)</div>`);
+   f) 사용된 코드/표준번호, 계산기준 표시(G-우수, F-양호, P-미흡)</div>`,"doc-9");
   /* 설비별 계산 */
-  S.srcs.forEach((s,i)=>{h+=srcPages(s,i)});
-  $("#report").innerHTML=h;
+  S.srcs.forEach((s,i)=>srcPages(s,i));
 }
 function ph(v,alt){return (v!=null&&String(v).trim())?esc(v):`<span style="color:#9aa3ab">${alt}</span>`}
 function esc(t){return String(t==null?"":t).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]))}
@@ -714,9 +840,9 @@ function srcPages(s,idx){
   const hasHole = !liq || spill;
   let n=0; const N=()=>CIRC[n++];
   const title=`<h3 class="sub" style="margin-top:0">- ${esc(s.설비명)}${s.설명?`(${esc(s.설명)})`:""}</h3>`;
-  let h="";
-  /* 페이지 A : 물질특성/환기조건 + 안전계수 + 환기속도 + 환기이용도 */
-  h+=page(`${idx===0?`<p style="font-size:10pt;margin-bottom:6px"><b>2) 폭발위험지역 계산결과</b></p>`:""}
+  const K=t=>"src:"+s.id+":"+t;
+  /* 블록 A : 물질특성/환기조건 + 안전계수 + 환기속도 + 환기이용도 */
+  page(`${idx===0?`<p style="font-size:10pt;margin-bottom:6px"><b>2) 폭발위험지역 계산결과</b></p>`:""}
    ${title}
    <p class="item">${N()} 물질특성 및 환기조건</p>
    <table class="spec"><tr><th colspan="2">Characteristics of release</th><th colspan="2">Ventilation characteristics</th></tr>
@@ -735,21 +861,20 @@ function srcPages(s,idx){
    <figure><figcaption>&lt;표 1&gt; 옥외 환기속도(u<sub>w</sub>)</figcaption>${tblUwDoc(s.uw)}</figure>
    ${String(s.uw근거||"").trim()?`<p style="font-size:9.5pt" class="ind">근거 : ${esc(s.uw근거)}</p>`:""}
    <p class="item">${N()} 환기이용도 : <span class="orange">${esc(s.이용도==="직접입력"?s.이용도직접:s.이용도)}</span></p>
-   <p class="ind2" style="font-size:9.5pt">(${r.이용도} : ${({"우수":"환기가 실제적으로 지속되는 상태","양호":"환기의 정상작동이 지속됨이 예측되는 상태, 빈번하지 않는 단기간 중단은 허용된다.","미흡":"환기가 양호 또는 우수 기준을 충족하지 않지만, 장기간 중단이 예상되지 않는 상태"})[r.이용도]})</p>`);
-  /* 페이지 B : 누출구멍 단면적 */
+   <p class="ind2" style="font-size:9.5pt">(${r.이용도} : ${({"우수":"환기가 실제적으로 지속되는 상태","양호":"환기의 정상작동이 지속됨이 예측되는 상태, 빈번하지 않는 단기간 중단은 허용된다.","미흡":"환기가 양호 또는 우수 기준을 충족하지 않지만, 장기간 중단이 예상되지 않는 상태"})[r.이용도]})</p>`,K("a"));
+  /* 블록 B : 누출구멍 단면적 */
   if(hasHole){
-    h+=page(`${title}<p class="item">${N()} ${s.등급==="2차"?"2차 누출등급에서의 ":""}누출 구멍 단면적(권고) : <span class="orange">${s.S}mm²</span></p>
+    page(`<p class="item">${N()} ${s.등급==="2차"?"2차 누출등급에서의 ":""}누출 구멍 단면적(권고) : <span class="orange">${s.S}mm²</span></p>
      <figure><figcaption>&lt;표 1&gt; 2차누출등급의 누출구멍 단면적(권고)</figcaption>${tblHole(s.S,false,"doc tiny")}</figure>
-     ${String(s.S근거||"").trim()?`<p class="ind" style="font-size:9.5pt">적용근거 : ${esc(s.S근거)}</p>`:""}`);
+     ${String(s.S근거||"").trim()?`<p class="ind" style="font-size:9.5pt">적용근거 : ${esc(s.S근거)}</p>`:""}`,K("b"),title);
   }
-  /* 페이지 C : 누출률/증발률 */
-  h+=page(`${title}${liq?liqCalc(s,m,r,N()):gasCalc(s,m,r,N())}`);
-  /* 페이지 D : 누출특성 + 희석등급 */
+  /* 블록 C : 누출률/증발률 */
+  page(`${liq?liqCalc(s,m,r,N()):gasCalc(s,m,r,N())}`,K("c"),title);
+  /* 블록 D : 누출특성 + 희석등급 */
   const dilTxt = s.희석모드==="auto"
     ? `희석등급 평가차트에 따라 <span class="orange">${r.희석}</span>으로 판단함.`
     : `희석등급 평가차트에 따라 ${r.희석auto}이지만, ${esc(s.희석근거||"설비특성상")} <span class="orange">${s.희석수동}</span>으로 판단함.`;
-  h+=page(`${title}
-   <p class="item">${N()} 누출 특성 = <span class="orange">${num(r.C,2)} m³/s</span></p>
+  page(`<p class="item">${N()} 누출 특성 = <span class="orange">${num(r.C,2)} m³/s</span></p>
    <p class="ind">⑴ 계산식</p>${EQ.char}${DEF.char}
    <p class="ind">⑵ 단계별 계산</p>
    <div class="calc">가. <i>Q<sub>g</sub></i> = ${sci(r.Qg,3)}<br>
@@ -758,20 +883,18 @@ function srcPages(s,idx){
    <span class="arrow">→ 누출특성 = ${sci(r.Qg,3)} / (${s.k} × ${trim((m.LFL/100).toFixed(5))}) = <span class="res">${num(r.C,2)} m³/s</span></span></div>
    <p class="item">${N()} ${dilTxt}</p>
    <figure>${chartDilution(r)}</figure>
-   <p class="ind" style="font-size:9.5pt">판독 : 누출특성 ${num(r.C,2)} m³/s, 환기속도 ${s.uw} m/s 교차점 → 고희석 경계선 u<sub>w</sub>=${num(r.bHi,3)} m/s, 저희석 경계선 u<sub>w</sub>=${num(r.bLo,3)} m/s</p>`);
-  /* 페이지 E : 범위 */
-  h+=page(`${title}
-   <p class="item">${N()} 폭발위험지역 범위 추정차트에 따라 폭발위험지역 장소의 범위(반경)는 <span class="orange">${s.범위모드==="auto"?r.범위:s.범위수동}m</span> 이다.</p>
+   <p class="ind" style="font-size:9.5pt">판독 : 누출특성 ${num(r.C,2)} m³/s, 환기속도 ${s.uw} m/s 교차점 → 고희석 경계선 u<sub>w</sub>=${num(r.bHi,3)} m/s, 저희석 경계선 u<sub>w</sub>=${num(r.bLo,3)} m/s</p>`,K("d"),title);
+  /* 블록 E : 범위 */
+  page(`<p class="item">${N()} 폭발위험지역 범위 추정차트에 따라 폭발위험지역 장소의 범위(반경)는 <span class="orange">${s.범위모드==="auto"?r.범위:s.범위수동}m</span> 이다.</p>
    ${r.NE?`<div style="border:1px solid #c00;padding:6px 8px;font-size:9.5pt;color:#c00;margin-bottom:6px">
      ※ 판정 결과가 NE(무시할 수 있는 범위)이므로 지침 &lt;표 1&gt; 비고 a에 따라 정상조건에서 무시될 수 있는 이론적 폭발위험장소이다. 아래 차트는 참고용이다.</div>`:""}
    <figure>${chartExtent(r,s.누출형태)}</figure>
    <p class="ind" style="font-size:9.5pt">적용곡선 : ${s.누출형태} / 계산값 r = ${num(r.rRaw,3)} m
    ${r.belowChart?` → 차트 하한(1 m) 미만이므로 보수적으로 <b>1 m</b> 적용`:""}</p>
    <p class="ind" style="font-size:9.5pt">수평범위 ${s.수평} m, 수직범위 ${s.수직} m 를 도면에 반영한다.</p>
-   ${r.msg.length?`<div style="border-left:3px solid #e2620d;padding:4px 8px;font-size:9pt;margin-top:8px">${r.msg.map(x=>"※ "+x).join("<br>")}</div>`:""}`);
-  /* 페이지 F : 종별 판정 */
-  h+=page(`${title}
-   <p class="item">${N()} 폭발위험장소의 종별 판정표에 따라 <span class="orange">${r.zone==="비위험"?"비위험 장소":r.zone+" 장소"}</span>이다.</p>
+   ${r.msg.length?`<div style="border-left:3px solid #e2620d;padding:4px 8px;font-size:9pt;margin-top:8px">${r.msg.map(x=>"※ "+x).join("<br>")}</div>`:""}`,K("e"),title);
+  /* 블록 F : 종별 판정 */
+  page(`<p class="item">${N()} 폭발위험장소의 종별 판정표에 따라 <span class="orange">${r.zone==="비위험"?"비위험 장소":r.zone+" 장소"}</span>이다.</p>
    <figure><figcaption>&lt;표 1&gt; 누출 등급 및 환기유효성에 따른 폭발위험장소 설정</figcaption>${tblZone(s.등급,r.희석,r.이용도,true)}</figure>
    <div class="sumbox"><div class="lft">
      <div>희석등급</div><div>${r.희석}</div>
@@ -781,8 +904,7 @@ function srcPages(s,idx){
      <div>계산거리(반경)</div><div>${s.수평}m</div>
    </div><div class="rgt">※ 폭발위험지역의 추정<br>
      환기유효성 ${r.희석}, 환기등급 ${r.이용도}으로 위험장소구분 기준으로 ${r.zone} 장소이며,<br>
-     위험성을 고려하여 장치로부터 ${s.수평}m를 ${r.zone} 장소로 구분함.</div></div>`);
-  return h;
+     위험성을 고려하여 장치로부터 ${s.수평}m를 ${r.zone} 장소로 구분함.</div></div>`,K("f"),title);
 }
 function liqCalc(s,m,r,cn){
   const spill=s.poolMode==="spill";
@@ -851,6 +973,21 @@ function renderDocPane(){
     <div class="row">${F("작성 연월","doc.년월")}${F("작성자","doc.작성자")}</div>
     <label class="f"><span>개요 문구 <em>(사업장명 뒤에 이어짐)</em></span><textarea data-path="doc.개요">${esc(S.doc.개요)}</textarea></label>
     <label class="f"><span>물질 선정 비고 <em>(비우면 계산서에 표시되지 않음)</em></span><textarea data-path="doc.물질비고" placeholder="예) 취급 물질은 다양하나 폭발하한과 인화점이 가장 낮은 ○○○로 통일하여 보수적으로 검토함.">${esc(S.doc.물질비고)}</textarea></label>
+  </fieldset>
+  <fieldset><legend>페이지 나눔</legend>
+    <label class="f"><span>나눔 방식</span>
+      <select data-path="doc.나눔모드" data-live="1">
+        <option value="auto" ${S.doc.나눔모드!=="each"?"selected":""}>자동 채우기 — 들어가는 만큼 이어 붙임</option>
+        <option value="each" ${S.doc.나눔모드==="each"?"selected":""}>항목마다 새 페이지 (예전 방식)</option>
+      </select></label>
+    ${S.doc.나눔모드!=="each"?`
+    ${F("페이지 하단 여유 (mm)","doc.하단여유","number",'min="0" max="60"')}
+    <p class="hint">여유를 늘리면 한 장에 덜 채워지고, 0 에 가까울수록 빽빽하게 채워집니다.</p>
+    <div style="display:flex;gap:6px;align-items:center">
+      <button class="mini" data-act="clrbrk">수동 나눔 모두 해제</button>
+      <span style="font-size:11px;color:var(--ink-3)">현재 ${(S.doc.breaks||[]).length}개 지정됨</span>
+    </div>
+    <p class="hint" style="margin-top:8px">미리보기에서 각 항목 오른쪽의 <b>✂</b> 를 누르면 그 항목부터 새 페이지에서 시작합니다. 다시 누르면 해제됩니다.</p>`:""}
   </fieldset>
   <div class="readout"><h4>출력 순서</h4>
    <div style="font-size:11.5px;line-height:1.9;color:var(--ink-2)">
@@ -966,7 +1103,9 @@ document.addEventListener("input",e=>{
   if(el.type==="number")v=v===""?"":parseFloat(v);
   if(el.dataset.type==="bool")v=(v==="true");
   setPath(p,v);
-  if(el.tagName==="SELECT"||el.dataset.live){renderSrcPane();renderMatPane()}
+  if(el.tagName==="SELECT"||el.dataset.live){
+    if(p.startsWith("doc."))renderDocPane(); else {renderSrcPane();renderMatPane()}
+  }
   renderReport();
   if(el.tagName!=="SELECT"&&!el.dataset.live){syncSide()}
 });
@@ -1015,6 +1154,13 @@ document.addEventListener("click",e=>{
     case"copysrc":{const n=JSON.parse(JSON.stringify(s));n.id=uid();n.설비명=s.설비명+" (사본)";S.srcs.splice(S.selSrc+1,0,n);S.selSrc++;renderPanes();}break;
     case"delsrc":if(S.srcs.length<2){alert("누출원은 최소 1개 필요합니다.");break}
       S.srcs.splice(S.selSrc,1);S.selSrc=0;renderPanes();break;
+    case"brk":{
+      const k=b.dataset.k;
+      if(!Array.isArray(S.doc.breaks))S.doc.breaks=[];
+      const i=S.doc.breaks.indexOf(k);
+      if(i<0)S.doc.breaks.push(k); else S.doc.breaks.splice(i,1);
+      renderDocPane();renderReport();}break;
+    case"clrbrk":S.doc.breaks=[];renderDocPane();renderReport();break;
     case"rel":s.등급=v;renderSrcPane();renderReport();break;
     case"hole":s.S=+v;renderSrcPane();renderReport();break;
     case"k":s.k=+v;s.k근거=K_ROWS.find(r=>+r[2]===+v)[1];renderSrcPane();renderReport();break;
@@ -1042,46 +1188,12 @@ $("#fileIn").addEventListener("change",ev=>{
   const f=ev.target.files[0];if(!f)return;
   const rd=new FileReader();
   rd.onload=()=>{try{const o=JSON.parse(rd.result);
-    Object.assign(S,{doc:o.doc,mats:o.mats,srcs:o.srcs,selMat:0,selSrc:0});renderPanes();
+    Object.assign(S,{doc:o.doc,mats:o.mats,srcs:o.srcs,selMat:0,selSrc:0});
+    fillDocDefaults(S.doc);renderPanes();
   }catch(err){alert("파일을 읽을 수 없습니다: "+err.message)}};
   rd.readAsText(f);
 });
 
-/* ---------- 검증용 예시 데이터(가상 사업장) ---------- */
-const SAMPLE={
- doc:{회사:"○○산업(주)",소재지:"경기도 ○○시 ○○동 000-0 ○○공단 0라 000호",년월:thisYM(),작성자:"",
-   개요:S.doc.개요,
-   물질비고:"취급 물질은 종류가 다양하나(Xylene, MEK, Thinner, Waste Solvent 등), 폭발 하한과 인화점이 비교적 낮은 TOLUENE로 통일하여 보수적으로 검토함."},
- mats:[Object.assign(newMat("톨루엔"),{비고:"Cas no. 108-88-3"})],
- srcs:[]
-};
-(function(){
- const M=SAMPLE.mats[0].id;
- const mk=o=>Object.assign(newSrc(),{matId:M},o);
- SAMPLE.srcs=[
-  mk({설비명:"TM-01~05",설명:"TANK MIXER / H.S MIXER",누출원:"하단 밸브",위치:"옥내",등급:"2차",
-      등급근거:"정상작동 중 인화성 물질의 누출이 예상되지 않는 밸브 밀봉부(지침 5.3.1 2차 누출등급 ①)",
-      S:2.5,S근거:"저속 가동 부품류의 실링요소 – 밸브 스템 패킹(누출개구부가 부식 등에 의해 확대될 수 있는 조건)",
-      h:2,poolMode:"spill",uw:0.05,uwPool:0.05,uw근거:"옥내의 경우 최소 공기속도 0.05 m/s 가정(<표 1> 비고)",
-      이용도:"미흡",희석모드:"manual",희석수동:"중희석",희석근거:"설비특성상",누출형태:"무거운가스",수평:1,수직:1}),
-  mk({설비명:"ST-01~08",설명:"Storage Tank",누출원:"탱크 상부 통기구",위치:"옥외",등급:"연속",
-      등급근거:"대기와 연결된 고정 통기구가 설치된 고정지붕 탱크 내부의 인화성 액체 표면(지침 5.3.1 연속 누출등급 ①)",
-      poolMode:"tank",D:2.3,uw:0.15,uwPool:0.15,
-      uw근거:"<표 1> 옥외·장애물 있는 지역·지표면 2 m 이하·공기보다 무거운 증기",
-      이용도:"미흡",희석모드:"auto",누출형태:"무거운가스",수평:1,수직:1}),
-  mk({설비명:"ST-10~12",설명:"Thinner Storage Tank",누출원:"하단 밸브",위치:"옥내",등급:"2차",
-      등급근거:"정상작동 중 인화성 물질의 누출이 예상되지 않는 밸브 밀봉부(지침 5.3.1 2차 누출등급 ①)",
-      S:2.5,S근거:"저속 가동 부품류의 실링요소 – 밸브 스템 패킹(누출개구부가 부식 등에 의해 확대될 수 있는 조건)",
-      h:6,poolMode:"spill",uw:0.05,uwPool:0.05,uw근거:"옥내의 경우 최소 공기속도 0.05 m/s 가정(<표 1> 비고)",
-      이용도:"미흡",희석모드:"auto",누출형태:"무거운가스",수평:1,수직:1})
- ];
-})();
-$("#btnSample").addEventListener("click",()=>{
-  if(!confirm("현재 입력내용을 지우고 예시 데이터를 불러옵니다. 계속할까요?"))return;
-  const c=JSON.parse(JSON.stringify(SAMPLE));
-  Object.assign(S,{doc:c.doc,mats:c.mats,srcs:c.srcs,selMat:0,selSrc:0});
-  renderPanes();
-});
 renderPanes();
 </script>
 </body>
