@@ -118,17 +118,17 @@ table.pick tr.on td.lab{box-shadow:inset 3px 0 0 var(--mark)}
 .it.brk:not(.top)::before{content:"";position:absolute;left:0;right:0;top:-1mm;border-top:2px dashed var(--mark)}
 /* 버튼을 가로로 눕혀 컨트롤 높이를 한 줄로 줄인다. 세로로 쌓으면 짧은 줄에서
    컨트롤이 아래 줄까지 내려와 옆줄의 ✂ 를 잘못 누르게 된다.
-   또 마우스가 올라간 줄의 컨트롤만 클릭을 받는다. */
-.itctl{position:absolute;top:50%;transform:translateY(-50%);right:-13.5mm;
-  opacity:0;transition:opacity .12s;display:flex;gap:3px;pointer-events:none;z-index:1}
+   컨트롤은 줄 상자 밖(오른쪽 여백)에 있으므로 자기 자신에 마우스가 올라가도
+   계속 보여야 한다. 줄 오른쪽 끝에 딱 붙여 중간에 끊기는 구간을 없앤다. */
+.itctl{position:absolute;top:50%;transform:translateY(-50%);right:-11mm;
+  opacity:0;transition:opacity .12s;display:flex;gap:3px;z-index:1}
 .spc{pointer-events:none}
-.it:hover>.itctl{opacity:1;pointer-events:auto;z-index:6}
+.it:hover>.itctl,.itctl:hover{opacity:1;z-index:6}
 .itctl button{width:19px;height:19px;padding:0;border:1px solid var(--rule);background:#fff;border-radius:4px;
   cursor:pointer;font-size:11px;line-height:1;color:var(--ink-2);font-family:var(--ui)}
 .itctl button:hover{border-color:var(--blue);color:var(--blue);background:var(--blue-soft)}
 .itctl button.on{background:var(--mark);border-color:var(--mark);color:#241000;font-weight:700}
 .it.brk>.itctl,.it.spaced>.itctl{opacity:.55}
-.it.brk>.itctl{pointer-events:auto}
 .page.over{outline:1px dashed #c0392b;outline-offset:3px}
 .page.over::after{content:"이 블록은 A4 한 장을 넘습니다 — 인쇄 시 자동으로 나뉩니다";
   position:absolute;left:15mm;bottom:4mm;font-size:8pt;color:#c0392b;font-family:var(--ui)}
