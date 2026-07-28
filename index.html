@@ -116,7 +116,8 @@ table.pick tr.on td.lab{box-shadow:inset 3px 0 0 var(--mark)}
 /* 줄(요소) 하나 = 페이지 나눔을 지정할 수 있는 최소 단위 */
 .it{position:relative}
 .it.brk:not(.top)::before{content:"";position:absolute;left:0;right:0;top:-1mm;border-top:2px dashed var(--mark)}
-.itctl{position:absolute;top:0;right:-12mm;opacity:0;transition:opacity .12s}
+.itctl{position:absolute;top:0;right:-12mm;opacity:0;transition:opacity .12s;display:flex;flex-direction:column;gap:2px}
+.spc{pointer-events:none}
 .it:hover>.itctl,.itctl:hover{opacity:1}
 .itctl button{width:21px;height:21px;padding:0;border:1px solid var(--rule);background:#fff;border-radius:4px;
   cursor:pointer;font-size:11px;line-height:1;color:var(--ink-2);font-family:var(--ui)}
@@ -175,8 +176,9 @@ table.spec td.k{background:#fff;font-weight:600}
 .sqrt{display:inline-flex;align-items:stretch;vertical-align:middle;margin:0 1px}
 .sqrt>.rad{flex:0 0 auto;width:.58em;height:auto;align-self:stretch;overflow:visible}
 .sqrt>.vin{border-top:1.25px solid currentColor;padding:1px 4px 0 3px}
-.deflist{font-size:10pt;margin:4px 0 8px 22px;line-height:1.7}
-.deflist b{font-style:italic;font-family:var(--eq);font-weight:400;display:inline-block;min-width:26px}
+/* 정의 목록 : 줄마다 별개 요소라서 페이지 경계에서 나뉠 수 있다 */
+.dl{font-size:10pt;margin:1px 0 1px 22px;line-height:1.7}
+.dl b{font-style:italic;font-family:var(--eq);font-weight:400;display:inline-block;min-width:26px}
 .calc{font-family:var(--eq);font-size:10.5pt;margin:4px 0 4px 16px;line-height:1.9}
 .calc i,.calc .frac,.calc sup,.calc sub{font-family:var(--eq)}
 .calc .res{color:#c0392b;font-weight:700}
@@ -207,7 +209,7 @@ table.spec td.k{background:#fff;font-weight:600}
   .cover{min-height:215mm}
   .itctl,#measure{display:none!important}
   .it.brk::before,.page.over::after{display:none!important}
-  .page.over{outline:0}
+  .page.over{outline:0;height:auto;overflow:visible;page-break-inside:auto}
   .blk{break-inside:auto;page-break-inside:auto}
   figure,table.spec,.sumbox,table.doc{break-inside:avoid;page-break-inside:avoid}
   svg.chart{width:100%;max-width:140mm;height:auto}
@@ -284,7 +286,7 @@ function newSrc(n){
     이용도:"미흡",이용도직접:"",이용도적용:"미흡",
     누출형태:"무거운가스",
     희석모드:"auto",희석수동:"중희석",희석근거:"설비특성상",
-    범위모드:"auto",범위수동:1,수평:1,수직:1,
+    범위모드:"auto",범위수동:"",수평:"",수직:"",
     Ta:25,Top:25,운전압력:"ATM",비고:""};
 }
 function uid(){return Math.random().toString(36).slice(2,9)}
@@ -293,7 +295,7 @@ const S={
   doc:{회사:"",소재지:"",년월:"",작성자:"",
     개요:"인화성물질을 쓰는 검토대상 설비에 대한 폭발 위험 지역 구분에 대해서 산업안전보건규칙 제230조에 따른 '산업표준화법'과 참고 문헌으로, IEC 60079-10-1(2020), KOSHA Guide E-180-2020(가스폭발위험장소의 설정에 관한 기술지침)을 Reference로 적용하였음",
     물질비고:"",
-    여백상:18,여백하:14,여백좌:15,여백우:15,breaks:[]},
+    여백상:18,여백하:14,여백좌:15,여백우:15,breaks:[],spacers:{}},
   mats:[],srcs:[],selMat:0,selSrc:0
 };
 /* 예전에 저장한 설정 파일에는 아래 항목이 없으므로 기본값을 채운다 */
@@ -302,6 +304,7 @@ function fillDocDefaults(d){
   const MG={여백상:18,여백하:14,여백좌:15,여백우:15};
   for(const k in MG){const v=+d[k];d[k]=(isFinite(v)&&v>=0&&v<=60)?v:MG[k]}
   if(!Array.isArray(d.breaks))d.breaks=[];
+  if(!d.spacers||typeof d.spacers!=="object")d.spacers={};
 }
 S.mats.push(newMat("톨루엔"));
 S.srcs.push(newSrc());
@@ -320,6 +323,7 @@ function num(x,sig){sig=sig||3;
   if(a>=1e-3&&a<1e5)return trim(Number(x.toPrecision(sig)).toString());
   return sci(x,sig);}
 function fx(x,d){return isFinite(x)?Number(x).toFixed(d):"-"}
+function m1(x){return isFinite(+x)?Number(x).toFixed(1):"-"}      // 거리 표기는 소수 1자리
 
 /* ===================== 계산 엔진 ===================== */
 /* 희석등급 경계선 — 지침 부속서 C <그림 1> 의 두 직선.
@@ -389,7 +393,11 @@ function calcSrc(s,m){
   r.rRaw = cv.a*Math.pow(r.C,cv.b);
   r.rChart = Math.max(1, r.rRaw);
   r.belowChart = r.rRaw<1;
-  r.범위 = s.범위모드==="auto" ? (r.done?Math.max(1,Math.round(r.rChart*10)/10):"-") : +s.범위수동;
+  // 소수 1자리, 올림(반내림하면 실제 반경보다 작게 적힐 수 있다)
+  r.범위 = s.범위모드==="auto" ? (r.done?Math.max(1,Math.ceil(r.rChart*10)/10):"-") : (+s.범위수동||0);
+  // 도면 수평·수직 범위를 비워두면 산정된 범위를 그대로 쓴다
+  r.수평 = (String(s.수평).trim()==="")?r.범위:(+s.수평);
+  r.수직 = (String(s.수직).trim()==="")?r.범위:(+s.수직);
   if(r.NE) r.msg.push("판정 결과가 NE(무시할 수 있는 범위)이므로 지침 부속서 D <그림 D.1> 비고에 따라 범위 그래프로 거리를 산정하지 않는다.");
   if(s.위치==="옥내"&&r.희석==="저희석") r.msg.push("옥내·저희석 조건이다. 지침 부속서 C 1.2(3) 및 부속서 B 3.3(4)에 따라 밀폐공간 전체를 하나의 폭발위험장소로 구분하고 개구부를 별도 누출원으로 검토해야 한다.");
   return r;
@@ -718,10 +726,10 @@ const EQ={
  ap:`<span class="fm"><i>A<sub>p</sub></i> = <span class="frac"><span><i>V</i><sub>누출</sub></span><span class="den">0.01 m</span></span> , <i>V</i><sub>누출</sub> = <span class="frac"><span><i>W</i> × <i>t</i></span><span class="den"><i>ρ</i></span></span> , <i>W</i> = <i>C<sub>d</sub>S</i>${SQ(`2<i>ρ</i>Δ<i>P</i>`)}</span>`
 };
 const DEF={
- liq:`<div class="deflist"><b><i>W</i></b> : 액체의 누출율 (kg/s)<br><b><i>C<sub>d</sub></i></b> : 누출계수 (단위 없음), 일반적으로 모난 오리피스는 0.5~0.75<br><b><i>S</i></b> : 유체가 누출되는 개구부(구멍)의 단면적 (m²)<br><b><i>ρ</i></b> : 액체 밀도 (kg/m³)<br><b>Δ<i>P</i></b> : 개구부에서의 누설 압력 차 (Pa)</div>`,
- pool:`<div class="deflist"><b><i>Q<sub>g</sub></i></b> : 부피증발률 (m³/s)<br><b><i>u<sub>w</sub></i></b> : 풀 표면 풍속 (m/s)<br><b><i>A<sub>p</sub></i></b> : 풀 표면적 (m²)<br><b><i>P<sub>v</sub></i></b> : 액체 증기압 (kPa)<br><b><i>M</i></b> : 몰질량 (kg/kmol)<br><b><i>R</i></b> : 기체상수 (8314 J/kmol·K)<br><b><i>T<sub>a</sub></i></b> : 주위온도 (K)<br><b><i>T</i></b> : 유체온도 (K)</div>`,
- gas:`<div class="deflist"><b><i>W<sub>g</sub></i></b> : 가스누출률 (kg/s)<br><b><i>C<sub>d</sub></i></b> : 누출계수(단위없음), 일반적으로 모난 오리피스는 0.5~0.75<br><b><i>M</i></b> : 가스 또는 증기의 몰 질량 (kg/kmol)<br><b><i>γ</i></b> : 단열 팽창 폴리트로픽 지수(단위없음)<br><b><i>P</i></b> : 용기 내부의 압력 (Pa)<br><b><i>P<sub>a</sub></i></b> : 대기압 (101,325 Pa)<br><b><i>R</i></b> : 이상기체상수 (8314 J/kmol·K)<br><b><i>S</i></b> : 유체가 누출되는 개구부(구멍)의 단면적 (m²)<br><b><i>T</i></b> : 유체, 기체 또는 액체의 절대온도 (K)<br><b><i>Z</i></b> : 압축인자(단위없음)</div>`,
- char:`<div class="deflist">여기서, <b><i>W<sub>g</sub></i></b> : 가스 누출율 (kg/s)<br><b><i>Q<sub>g</sub></i></b> : 부피 증발율 (m³/s)<br><b><i>ρ<sub>g</sub></i></b> : 가스 또는 증기 밀도 (kg/m³)<br><b><i>k</i></b> : LFL의 안전계수<br><b>LFL</b> : 폭발 하한계 (vol/vol)</div>`
+ liq:`<div class="dl"><b><i>W</i></b> : 액체의 누출율 (kg/s)</div><div class="dl"><b><i>C<sub>d</sub></i></b> : 누출계수 (단위 없음), 일반적으로 모난 오리피스는 0.5~0.75</div><div class="dl"><b><i>S</i></b> : 유체가 누출되는 개구부(구멍)의 단면적 (m²)</div><div class="dl"><b><i>ρ</i></b> : 액체 밀도 (kg/m³)</div><div class="dl"><b>Δ<i>P</i></b> : 개구부에서의 누설 압력 차 (Pa)</div>`,
+ pool:`<div class="dl"><b><i>Q<sub>g</sub></i></b> : 부피증발률 (m³/s)</div><div class="dl"><b><i>u<sub>w</sub></i></b> : 풀 표면 풍속 (m/s)</div><div class="dl"><b><i>A<sub>p</sub></i></b> : 풀 표면적 (m²)</div><div class="dl"><b><i>P<sub>v</sub></i></b> : 액체 증기압 (kPa)</div><div class="dl"><b><i>M</i></b> : 몰질량 (kg/kmol)</div><div class="dl"><b><i>R</i></b> : 기체상수 (8314 J/kmol·K)</div><div class="dl"><b><i>T<sub>a</sub></i></b> : 주위온도 (K)</div><div class="dl"><b><i>T</i></b> : 유체온도 (K)</div>`,
+ gas:`<div class="dl"><b><i>W<sub>g</sub></i></b> : 가스누출률 (kg/s)</div><div class="dl"><b><i>C<sub>d</sub></i></b> : 누출계수(단위없음), 일반적으로 모난 오리피스는 0.5~0.75</div><div class="dl"><b><i>M</i></b> : 가스 또는 증기의 몰 질량 (kg/kmol)</div><div class="dl"><b><i>γ</i></b> : 단열 팽창 폴리트로픽 지수(단위없음)</div><div class="dl"><b><i>P</i></b> : 용기 내부의 압력 (Pa)</div><div class="dl"><b><i>P<sub>a</sub></i></b> : 대기압 (101,325 Pa)</div><div class="dl"><b><i>R</i></b> : 이상기체상수 (8314 J/kmol·K)</div><div class="dl"><b><i>S</i></b> : 유체가 누출되는 개구부(구멍)의 단면적 (m²)</div><div class="dl"><b><i>T</i></b> : 유체, 기체 또는 액체의 절대온도 (K)</div><div class="dl"><b><i>Z</i></b> : 압축인자(단위없음)</div>`,
+ char:`<div class="dl">여기서, <b><i>W<sub>g</sub></i></b> : 가스 누출율 (kg/s)</div><div class="dl"><b><i>Q<sub>g</sub></i></b> : 부피 증발율 (m³/s)</div><div class="dl"><b><i>ρ<sub>g</sub></i></b> : 가스 또는 증기 밀도 (kg/m³)</div><div class="dl"><b><i>k</i></b> : LFL의 안전계수</div><div class="dl"><b>LFL</b> : 폭발 하한계 (vol/vol)</div>`
 };
 </script>
 <script>
@@ -739,6 +747,7 @@ const PAGE_GAP_MM=6;                   // 한 장 안에서 블록 사이 간격
 function mg(k,def){const v=+S.doc[k];return (isFinite(v)&&v>=0&&v<=60)?v:def}
 function pageMargins(){return {t:mg("여백상",18),b:mg("여백하",14),l:mg("여백좌",15),r:mg("여백우",15)}}
 const PNO_MM=9;                        // 쪽번호 자리 (본문 영역 맨 아래에서 떼어 둔다)
+const SPACE_MM=6;                      // 줄 띄우기 한 칸 높이
 const SAFE_MM=4;                       // 측정 오차 흡수용 여유. 0 이면 1mm 차이로 장이 갈릴 수 있다
 function contentMM(){const m=pageMargins();return 297-m.t-m.b}   // 인쇄영역 높이
 function usableMM(){return Math.max(30,contentMM()-PNO_MM)}      // 본문이 실제로 쓰는 높이
@@ -774,25 +783,38 @@ function buildReport(){
   const blocks=BLK;
   const brk=new Set(S.doc.breaks||[]);
   const BUDGET=budgetPx(), FULL=usableMM()*MMPX, GAP=PAGE_GAP_MM*MMPX;
+  const sp=S.doc.spacers||{}, SPACE=SPACE_MM*MMPX;
+  const spaceOf=k=>Math.max(0,Math.min(6,+sp[k]||0));
 
   /* 1) 측정 — 블록을 이루는 요소 하나하나의 높이를 잰다 */
   let mez=$("#measure");
   if(!mez){mez=document.createElement("section");mez.id="measure";mez.className="page";document.body.appendChild(mez)}
   mez.innerHTML=blocks.map(b=>`<div class="blk">${b.head}</div><div class="blk">${b.html}</div>`).join("");
-  const kids=mez.children, items=[];
+  /* 출력과 같은 구조(.it 로 한 겹 감싼 상태)로 재야 형제 선택자·여백 겹침이 같게 걸린다 */
+  const kids=mez.children;
+  blocks.forEach((b,i)=>{
+    const body=kids[2*i+1];
+    Array.prototype.slice.call(body.children).forEach(c=>{
+      const w=document.createElement("div");w.className="it";
+      body.insertBefore(w,c);w.appendChild(c);
+    });
+  });
+  const items=[];
   blocks.forEach((b,i)=>{
     const headH=kids[2*i].offsetHeight, body=kids[2*i+1];
     const box=body.getBoundingClientRect();
     const cs=Array.prototype.slice.call(body.children);
     if(!cs.length){items.push({b,headH,key:b.key+"#0",html:b.html,h:box.height,first:true,keep:false});return}
     const tops=cs.map(c=>c.getBoundingClientRect().top);
-    cs.forEach((c,j)=>{
+    cs.forEach((w,j)=>{
       let h=(j<cs.length-1?tops[j+1]:box.bottom)-tops[j];
       if(j===0)h+=tops[0]-box.top;
+      const c=w.firstElementChild||w;
       items.push({b,headH,key:b.key+"#"+j,html:c.outerHTML,h,first:j===0,keep:isKeep(c)});
     });
   });
   mez.innerHTML="";
+  items.forEach(it=>{it.space=spaceOf(it.key);it.h+=it.space*SPACE});
 
   /* 2) 한 장에 들어가는 만큼 채워 넣는다 */
   const pages=[];let cur=[],curH=0,curKey=null;
@@ -851,9 +873,16 @@ function buildReport(){
 function itemHtml(it,brk,atTop){
   const on=brk.has(it.key)||(it.first&&brk.has(it.b.key));
   const k=brk.has(it.b.key)&&it.first?it.b.key:it.key;   // 예전 블록 단위 표시도 그대로 해제되게
-  return `<div class="it${on?" brk":""}${atTop?" top":""}">${it.html}`
-    +`<span class="itctl"><button data-act="brk" data-k="${k}" class="${on?"on":""}"`
-    +` title="${on?"이 줄의 페이지 나눔 해제 — 앞 내용에 이어 붙입니다":"이 줄부터 새 페이지에서 시작합니다"}">${on?"⏏":"✂"}</button></span></div>`;
+  const sp=it.space||0;
+  return `<div class="it${on?" brk":""}${atTop?" top":""}">`
+    +(sp?`<div class="spc" style="height:${sp*SPACE_MM}mm"></div>`:"")
+    +it.html
+    +`<span class="itctl">`
+    +`<button data-act="brk" data-k="${k}" class="${on?"on":""}"`
+    +` title="${on?"이 줄의 페이지 나눔 해제":"이 줄부터 새 페이지에서 시작"}">${on?"⏏":"✂"}</button>`
+    +`<button data-act="spc" data-k="${it.key}" class="${sp?"on":""}"`
+    +` title="이 줄 위를 한 칸 띄웁니다 (${sp}/6, 6 다음엔 0)">↕</button>`
+    +`</span></div>`;
 }
 
 function collectBlocks(){
@@ -896,7 +925,7 @@ function collectBlocks(){
    <h4 class="eq">가스 또는 증기의 누출률</h4>
    <p class="ind">가스 용기의 내부압력이 임계압력(Pc)보다 높다면, 누출가스의 속도는 음속(SONIC, CHOCKED)이다.</p>
    <p class="ind"><b>1) 임계압력</b></p>${EQ.pc}
-   <div class="deflist"><b><i>P<sub>C</sub></i></b> : 임계압력 (Pa)<br><b><i>P<sub>a</sub></i></b> : 대기압 (101,325 Pa)<br><b><i>γ</i></b> : 단열팽창 폴리트로픽 지수(단위없음)</div>`,"doc-5");
+   <div class="dl"><b><i>P<sub>C</sub></i></b> : 임계압력 (Pa)</div><div class="dl"><b><i>P<sub>a</sub></i></b> : 대기압 (101,325 Pa)</div><div class="dl"><b><i>γ</i></b> : 단열팽창 폴리트로픽 지수(단위없음)</div>`,"doc-5");
   page(`<p class="ind"><b>2) 아음속누설(Non chocked)의 가스 누출률</b></p>${EQ.nonchoked}${DEF.gas}
    <p class="ind"><b>3) 음속누설(Chocked)의 가스 누출량</b></p>${EQ.choked}${DEF.gas}`,"doc-6");
   page(`<h4 class="eq">누출특성</h4>${EQ.char}${DEF.char}
@@ -947,7 +976,7 @@ function part2Table(){
     h+=`<tr><td>${i+1}</td><td>${esc(s.설비명)}</td><td>${esc(s.위치)}</td><td>${gr}</td><td>${amt}</td><td>${num(r.C,2)}</td>
     <td>${S.mats.indexOf(m)+1}</td><td>${s.Top==25?"AMB":s.Top}</td><td>${esc(s.운전압력)}</td>
     <td>${s.상태==="liquid"?"L":"G"}</td><td>${s.위치==="옥내"?"A":"N"}</td><td>${r.희석}</td><td>${ut}</td>
-    <td>${r.zone}</td><td>${s.수평}</td><td>${s.수직}</td><td>${esc(s.비고)}</td></tr>`;});
+    <td>${r.zone}</td><td>${m1(r.수평)}</td><td>${m1(r.수직)}</td><td>${esc(s.비고)}</td></tr>`;});
   return h+`</table>`;
 }
 
@@ -989,10 +1018,10 @@ function srcPages(s,idx){
      ${이차
        ?`<figure><figcaption>&lt;표 1&gt; 2차누출등급의 누출구멍 단면적(권고)</figcaption>${tblHole(s.S,false,"doc tiny",s.Scell)}</figure>`
        :`<p class="ind2" style="font-size:9.5pt;color:#1546a0">* 지침에 따라 ${esc(s.등급)} 누출등급에서 누출구멍 크기는 누출 오리피스(예: 상대적으로 예측 가능한 조건하에서 가스가 누출되는 다양한 통기구와 브리더밸브 등)의 형태와 크기에 따라 정해진다. &lt;표 1&gt;은 2차 누출등급에만 적용되므로 인용하지 않는다.</p>`}
-     ${String(s.S근거||"").trim()?`<p class="ind" style="font-size:9.5pt">적용근거 : ${esc(s.S근거)}</p>`:""}`,K("b"),title);
+     ${String(s.S근거||"").trim()?`<p class="ind" style="font-size:9.5pt">적용근거 : ${esc(s.S근거)}</p>`:""}`,K("b"));
   }
   /* 블록 C : 누출률/증발률 */
-  page(`${liq?liqCalc(s,m,r,N()):gasCalc(s,m,r,N())}`,K("c"),title);
+  page(`${liq?liqCalc(s,m,r,N()):gasCalc(s,m,r,N())}`,K("c"));
   /* 블록 D : 누출특성 + 희석등급 */
   const dilTxt = s.희석모드==="auto"
     ? `희석등급 평가차트에 따라 <span class="orange">${r.희석}</span>으로 판단함.`
@@ -1006,16 +1035,16 @@ function srcPages(s,idx){
    <span class="arrow">→ 누출특성 = ${sci(r.Qg,3)} / (${s.k} × ${trim((m.LFL/100).toFixed(5))}) = <span class="res">${num(r.C,2)} m³/s</span></span></div>
    <p class="item">${N()} ${dilTxt}</p>
    <figure>${chartDilution(r)}</figure>
-   <p class="ind" style="font-size:9.5pt">판독 : 누출특성 ${num(r.C,2)} m³/s, 환기속도 ${s.uw} m/s 교차점 → 고희석 경계선 u<sub>w</sub>=${num(r.bHi,3)} m/s, 저희석 경계선 u<sub>w</sub>=${num(r.bLo,3)} m/s</p>`,K("d"),title);
+   <p class="ind" style="font-size:9.5pt">판독 : 누출특성 ${num(r.C,2)} m³/s, 환기속도 ${s.uw} m/s 교차점 → 고희석 경계선 u<sub>w</sub>=${num(r.bHi,3)} m/s, 저희석 경계선 u<sub>w</sub>=${num(r.bLo,3)} m/s</p>`,K("d"));
   /* 블록 E : 범위 */
-  page(`<p class="item">${N()} 폭발위험지역 범위 추정차트에 따라 폭발위험지역 장소의 범위(반경)는 <span class="orange">${s.범위모드==="auto"?r.범위:s.범위수동}m</span> 이다.</p>
+  page(`<p class="item">${N()} 폭발위험지역 범위 추정차트에 따라 폭발위험지역 장소의 범위(반경)는 <span class="orange">${m1(r.범위)} m</span> 이다.</p>
    ${r.NE?`<div style="border:1px solid #c00;padding:6px 8px;font-size:9.5pt;color:#c00;margin-bottom:6px">
      ※ 판정 결과가 NE(무시할 수 있는 범위)이므로 지침 &lt;표 1&gt; 비고 a에 따라 정상조건에서 무시될 수 있는 이론적 폭발위험장소이다. 아래 차트는 참고용이다.</div>`:""}
    <figure>${chartExtent(r,s.누출형태)}</figure>
    <p class="ind" style="font-size:9.5pt">적용곡선 : ${s.누출형태} / 계산값 r = ${num(r.rRaw,3)} m
    ${r.belowChart?` → 차트 하한(1 m) 미만이므로 보수적으로 <b>1 m</b> 적용`:""}</p>
-   <p class="ind" style="font-size:9.5pt">수평범위 ${s.수평} m, 수직범위 ${s.수직} m 를 도면에 반영한다.</p>
-   ${r.msg.length?`<div style="border-left:3px solid #e2620d;padding:4px 8px;font-size:9pt;margin-top:8px">${r.msg.map(x=>"※ "+x).join("<br>")}</div>`:""}`,K("e"),title);
+   <p class="ind" style="font-size:9.5pt">수평범위 ${m1(r.수평)} m, 수직범위 ${m1(r.수직)} m 를 도면에 반영한다.</p>
+   ${r.msg.length?`<div style="border-left:3px solid #e2620d;padding:4px 8px;font-size:9pt;margin-top:8px">${r.msg.map(x=>"※ "+x).join("<br>")}</div>`:""}`,K("e"));
   /* 블록 F : 종별 판정 */
   page(`<p class="item">${N()} 폭발위험장소의 종별 판정표에 따라 <span class="orange">${r.zone==="비위험"?"비위험 장소":r.zone+" 장소"}</span>이다.</p>
    <figure><figcaption>&lt;표 1&gt; 누출 등급 및 환기유효성에 따른 폭발위험장소 설정</figcaption>${tblZone(s.등급,r.희석,r.이용도,true)}</figure>
@@ -1024,10 +1053,10 @@ function srcPages(s,idx){
      <div>가스종류</div><div>${+m.비중>=1?"무거운가스":"가벼운가스"}</div>
      <div>폭발위험장소 유형</div><div>${r.zone}</div>
      <div>기기 그룹 및 온도 등급</div><div>${esc(m.그룹)} ${esc(m.온도)}</div>
-     <div>계산거리(반경)</div><div>${s.수평}m</div>
+     <div>계산거리(반경)</div><div>${m1(r.범위)} m</div>
    </div><div class="rgt">※ 폭발위험지역의 추정<br>
      환기유효성 ${r.희석}, 환기등급 ${r.이용도}으로 위험장소구분 기준으로 ${r.zone} 장소이며,<br>
-     위험성을 고려하여 장치로부터 ${s.수평}m를 ${r.zone} 장소로 구분함.</div></div>`,K("f"),title);
+     위험성을 고려하여 장치로부터 ${m1(r.수평)} m 를 ${r.zone} 장소로 구분함.</div></div>`,K("f"));
 }
 function liqCalc(s,m,r,cn){
   const spill=s.poolMode==="spill";
@@ -1038,9 +1067,12 @@ function liqCalc(s,m,r,cn){
   <p class="ind2"><b>가. 풀 표면적(<i>A<sub>p</sub></i>)</b></p>
   ${spill?`<p class="ind2" style="color:#1546a0;font-size:9.5pt">* 지침 : 용기에서 흘러나오는 액체는 즉시 1cm 깊이의 풀(Pool)로써 평평한 표면을 형성하고 대기 조건에서 증발된다고 가정.</p>
   ${EQ.ap}
-  <div class="deflist">여기서, <b><i>W</i></b> : 액체의 누출율 (kg/s)<br><b><i>t</i></b> : 누출시간 (${s.t}s) — KOSHA GUIDE P-107-2020를 참고하여 가장 보수적으로 누출시간을 적용함.<br>
-  <b><i>C<sub>d</sub></i></b> : 누출계수 (단위 없음), 일반적으로 모난 오리피스는 0.5~0.75 (여기서는 ${s.Cd}로 가정)<br>
-  <b><i>S</i></b> : 유체가 누출되는 개구부(구멍)의 단면적 (m²)<br><b><i>ρ</i></b> : 액체 밀도 (kg/m³)<br><b>Δ<i>P</i></b> : 개구부에서의 누설 압력 차 (Pa)</div>
+  <div class="dl">여기서, <b><i>W</i></b> : 액체의 누출율 (kg/s)</div>
+  <div class="dl"><b><i>t</i></b> : 누출시간 (${s.t}s) — KOSHA GUIDE P-107-2020를 참고하여 가장 보수적으로 누출시간을 적용함.</div>
+  <div class="dl"><b><i>C<sub>d</sub></i></b> : 누출계수 (단위 없음), 일반적으로 모난 오리피스는 0.5~0.75 (여기서는 ${s.Cd}로 가정)</div>
+  <div class="dl"><b><i>S</i></b> : 유체가 누출되는 개구부(구멍)의 단면적 (m²)</div>
+  <div class="dl"><b><i>ρ</i></b> : 액체 밀도 (kg/m³)</div>
+  <div class="dl"><b>Δ<i>P</i></b> : 개구부에서의 누설 압력 차 (Pa)</div>
   <div class="calc">
   Δ<i>P</i> = <i>ρ</i> × <i>g</i> × <i>h</i> ${s.dPmode==="head"?`(<i>h</i> = ${s.h} m 로 가정함)`:"(직접 입력)"}<br>
   ${s.dPmode==="head"?`&nbsp;&nbsp;&nbsp;= ${m.rho} kg/m³ × 9.8 m/sec² × ${s.h} m = ${fx(r.dP,2)} kg/(m·s²) ≈ ${Math.round(r.dP).toLocaleString()} Pa`:`&nbsp;&nbsp;&nbsp;= ${Math.round(r.dP).toLocaleString()} Pa`}<br>
@@ -1110,11 +1142,13 @@ function renderDocPane(){
   </fieldset>
   <fieldset><legend>페이지 나눔</legend>
     <div style="display:flex;gap:6px;align-items:center">
-      <button class="mini" data-act="clrbrk">수동 나눔 모두 해제</button>
-      <span style="font-size:11px;color:var(--ink-3)">현재 ${(S.doc.breaks||[]).length}개 지정됨</span>
+      <button class="mini" data-act="clrbrk">나눔 해제</button>
+      <button class="mini" data-act="clrspc">줄 띄우기 해제</button>
+      <span style="font-size:11px;color:var(--ink-3)">나눔 ${(S.doc.breaks||[]).length} · 띄움 ${Object.keys(S.doc.spacers||{}).length}</span>
     </div>
     <p class="hint" style="margin-top:8px">미리보기에서 줄 위에 마우스를 올리면 오른쪽 여백에 <b>✂</b> 가 나타납니다.
-     누르면 <b>그 줄부터</b> 새 페이지에서 시작하고, 지정된 자리는 주황 점선으로 표시됩니다. 다시 누르면 해제됩니다.</p>
+     <b>✂</b> 는 그 줄부터 새 페이지에서 시작하고(주황 점선 표시), <b>↕</b> 는 그 줄 위를 한 칸(${SPACE_MM}mm)씩 띄웁니다.
+     ↕ 를 계속 누르면 6칸까지 늘었다가 0으로 돌아갑니다.</p>
   </fieldset>
   <div class="readout"><h4>출력 순서</h4>
    <div style="font-size:11.5px;line-height:1.9;color:var(--ink-2)">
@@ -1162,7 +1196,7 @@ function renderSrcPane(){
    <dt><b>누출특성</b></dt><dd><b>${num(r.C,3)} m³/s</b></dd>
    <dt>희석등급 (차트)</dt><dd>${r.희석auto}${s.희석모드!=="auto"?` → <b>${r.희석}</b>`:""}</dd>
    <dt>폭발위험장소</dt><dd><span class="tag ${zoneClass(r.zone)}">${r.zone}</span></dd>
-   <dt>범위(차트) r</dt><dd>${num(r.rRaw,3)} m → ${r.범위} m</dd></dl>
+   <dt>범위(차트) r</dt><dd>${num(r.rRaw,3)} m → ${m1(r.범위)} m</dd></dl>
    ${r.msg.map(x=>`<div class="warn">${x}</div>`).join("")}</div>`;
 
   h+=`<fieldset><legend>누출원 개요</legend>
@@ -1243,8 +1277,9 @@ function renderSrcPane(){
   h+=`<fieldset><legend>⑥ 범위(거리) 산정</legend>
    ${Sel("누출형태 (범위곡선)","src.누출형태",["무거운가스","저속확산","고속제트"])}
    ${Sel("범위 적용","src.범위모드",["auto","manual"]).replace(">auto<",">차트 자동판독<").replace(">manual<",">직접 지정<")}
-   ${s.범위모드==="manual"?F("적용 범위(m)","src.범위수동","number"):`<p class="hint">차트 판독값 : ${r.범위} m</p>`}
-   <div class="row">${F("도면 수평범위(m)","src.수평","number")}${F("도면 수직범위(m)","src.수직","number")}</div>
+   ${s.범위모드==="manual"?F("적용 범위(m)","src.범위수동","number"):`<p class="hint">차트 판독값 : ${m1(r.범위)} m</p>`}
+   <div class="row">${F("도면 수평범위(m)","src.수평","number",'placeholder="비우면 자동"')}${F("도면 수직범위(m)","src.수직","number",'placeholder="비우면 자동"')}</div>
+   <p class="hint">비워두면 산정된 범위(${m1(r.범위)} m)를 그대로 씁니다. 도면에 다른 값을 반영할 때만 입력하세요.</p>
   </fieldset>`;
   $("#pane-src").innerHTML=h;
 }
@@ -1281,7 +1316,7 @@ function syncSide(){
      <dt><b>누출특성</b></dt><dd><b>${num(r.C,3)} m³/s</b></dd>
      <dt>희석등급 (차트)</dt><dd>${r.희석auto}${s.희석모드!=="auto"?` → <b>${r.희석}</b>`:""}</dd>
      <dt>폭발위험장소</dt><dd><span class="tag ${zoneClass(r.zone)}">${r.zone}</span></dd>
-     <dt>범위(차트) r</dt><dd>${num(r.rRaw,3)} m → ${r.범위} m</dd></dl>
+     <dt>범위(차트) r</dt><dd>${num(r.rRaw,3)} m → ${m1(r.범위)} m</dd></dl>
      ${r.msg.map(x=>`<div class="warn">${x}</div>`).join("")}`;
   }
 }
@@ -1316,6 +1351,10 @@ document.addEventListener("click",e=>{
       const i=S.doc.breaks.indexOf(k);
       if(i<0)S.doc.breaks.push(k); else S.doc.breaks.splice(i,1);
       renderDocPane();renderReport();}break;
+    case"spc":{const k=b.dataset.k;const sp=S.doc.spacers||(S.doc.spacers={});
+      sp[k]=((+sp[k]||0)+1)%7; if(!sp[k])delete sp[k];
+      renderDocPane();renderReport();}break;
+    case"clrspc":S.doc.spacers={};renderDocPane();renderReport();break;
     case"clrbrk":S.doc.breaks=[];renderDocPane();renderReport();break;
     case"mg":{const p=String(v).split(",").map(Number);
       S.doc.여백상=p[0];S.doc.여백하=p[1];S.doc.여백좌=p[2];S.doc.여백우=p[3];
