@@ -276,11 +276,11 @@ function newSrc(n){
   return {id:uid(),설비명:"설비-01",설명:"",누출원:"",matId:null,
     위치:"옥내",상태:"liquid",등급:"2차",등급근거:"",
     Cd:0.75,Cd근거:"모난(비원형) 오리피스",S:2.5,Scell:"",S근거:"",
-    t:3600,dPmode:"head",h:2,dP:0,
+    t:"",dPmode:"head",h:"",dP:0,
     poolMode:"spill",D:2.3,
     P_MPa:1.0,T_gas:288,Z:1,
     k:1,k근거:"실험결과 또는 문헌자료에 폭발하한이 명확한 물질(단일 및 혼합물질)",
-    uw:0.05,uw근거:"옥내의 경우 최소 공기속도 0.05 m/s 를 가정(<표 1> 비고)",uwcell:"",
+    uw:0.05,uw근거:"옥내의 경우 최소 공기속도 0.05 m/s 를 가정(<표 1> 비고)",uwcell:"",uw옥내:true,
     이용도:"미흡",이용도직접:"",이용도적용:"미흡",
     누출형태:"무거운가스",
     희석모드:"auto",희석수동:"중희석",희석근거:"설비특성상",
@@ -365,21 +365,31 @@ function calcSrc(s,m){
   // 희석등급
   const uw=+s.uw;
   r.uw=uw;
+  r.done=isFinite(r.C)&&r.C>0;          // 필수 입력이 채워져 계산이 성립하는가
+  if(!r.done){
+    const miss=[];
+    if(s.상태==="liquid"&&s.poolMode!=="tank"){
+      if(!isFinite(+s.t)||+s.t<=0)miss.push("누출시간 t");
+      if(s.dPmode==="head"?(!isFinite(+s.h)||+s.h<=0):(!isFinite(+s.dP)||+s.dP<=0))
+        miss.push(s.dPmode==="head"?"액주높이 h":"누설 압력차 ΔP");
+    }
+    r.msg.push(miss.length?`${miss.join(" · ")} 을(를) 입력해야 계산됩니다.`:"입력값이 부족하여 계산할 수 없습니다.");
+  }
   r.bHi = DIL_HI.a*Math.pow(r.C,DIL_HI.b);
   r.bLo = DIL_LO.a*Math.pow(r.C,DIL_LO.b);
-  r.희석auto = uw>=r.bHi ? "고희석" : (uw<=r.bLo ? "저희석" : "중희석");
+  r.희석auto = r.done ? (uw>=r.bHi ? "고희석" : (uw<=r.bLo ? "저희석" : "중희석")) : "-";
   r.희석 = s.희석모드==="auto" ? r.희석auto : s.희석수동;
   // 종별
   r.이용도 = s.이용도==="직접입력" ? s.이용도적용 : s.이용도;
-  r.cell = zoneCell(s.등급, r.희석, r.이용도);
-  r.zone = zoneShort(r.cell);
-  r.NE = /^비위험/.test(r.cell.replace(/<br>/g,""));
+  r.cell = (r.희석==="-") ? "-" : zoneCell(s.등급, r.희석, r.이용도);
+  r.zone = (r.cell==="-") ? "-" : zoneShort(r.cell);
+  r.NE = /^비위험/.test(String(r.cell).replace(/<br>/g,""));
   // 범위
   const cv=EXT[s.누출형태];
   r.rRaw = cv.a*Math.pow(r.C,cv.b);
   r.rChart = Math.max(1, r.rRaw);
   r.belowChart = r.rRaw<1;
-  r.범위 = s.범위모드==="auto" ? Math.max(1,Math.round(r.rChart*10)/10) : +s.범위수동;
+  r.범위 = s.범위모드==="auto" ? (r.done?Math.max(1,Math.round(r.rChart*10)/10):"-") : +s.범위수동;
   if(r.NE) r.msg.push("판정 결과가 NE(무시할 수 있는 범위)이므로 지침 부속서 D <그림 D.1> 비고에 따라 범위 그래프로 거리를 산정하지 않는다.");
   if(s.위치==="옥내"&&r.희석==="저희석") r.msg.push("옥내·저희석 조건이다. 지침 부속서 C 1.2(3) 및 부속서 B 3.3(4)에 따라 밀폐공간 전체를 하나의 폭발위험장소로 구분하고 개구부를 별도 누출원으로 검토해야 한다.");
   return r;
@@ -540,6 +550,35 @@ c 왕복 압축기 – 압축기의 프레임과 실린더에서는 통상 누�
 d 장비 제조자 데이터 – 예상되는 고장의 경우 그 영향을 평가하기 위하여 장비 제조자의 협력 필요(예, 밀봉장치 관련 세부 도면의 이용성)<br>
 e 공정설비 배치 – 특정 상황(예, 사전 연구), 인화성 물질의 최대 허용 누출률로 정의하는 운전 분석은 장비 제조자 데이터의 부족을 보완할 수 있다.<br>
 주. 기타 일반적인 값은 특정 응용에 대한 관련 국가 또는 산업 코드에서 구할 수 있다.`;
+/* 누출시간 t — 검출·차단 시스템 등급에 따른 권고 누출시간 (KOSHA GUIDE P-107) */
+const T_PRESET=[["5분",300],["10분",600],["20분",1200],["30분",1800],["40분",2400],["1시간",3600]];
+const DET_ROWS=[
+ ["시스템 운전조건의 변화에 따라 물질의 손실(즉, 압력 혹은 흐름 손실)을 검출하기 위하여 특별히 고안된 시스템","A",
+  "어떠한 운전자의 개입 없이 공정기기나 검출기로부터 직접 차단되는 시스템","A"],
+ ["압력설비 밖에 물질이 존재하는지를 결정하기 위해 적절히 설치된 검출기","B",
+  "누출 영역에서 멀리 떨어져 있는 제어실 또는 기타 적절한 위치에 있는 운전자에 의해서 제어되는 차단 시스템","B"],
+ ["육안검출, 카메라 혹은 검출기","C","수동 운전 밸브에 의한 차단","C"]];
+/* [검출등급, 차단등급, [¼인치, 1인치, 4인치] 누출시간(초)] */
+const T_ROWS=[
+ ["A","A",[1200,600,300]],["A","B",[1800,1200,600]],["A","C",[2400,1800,1200]],
+ ["B","A 또는 B",[2400,1800,1200]],["B","C",[3600,1800,1200]],["C","A, B, 혹은 C",[3600,2400,1200]]];
+function tmin(sec){const m=sec/60;return m>=60?(m/60)+"시간":m+"분"}
+function tblDet(cls){
+  let h=`<table class="${cls||"pick"}"><tr><th>검출시스템 유형</th><th style="width:40px">검출<br>등급</th><th>차단시스템 유형</th><th style="width:40px">차단<br>등급</th></tr>`;
+  DET_ROWS.forEach(r=>{h+=`<tr><td class="lab" style="text-align:left">${r[0]}</td><td><b>${r[1]}</b></td>
+    <td class="lab" style="text-align:left">${r[2]}</td><td><b>${r[3]}</b></td></tr>`});
+  return h+`</table>`;
+}
+function tblT(sel,click,cls){
+  const C=(v)=>{const on=isFinite(+sel)&&Math.abs(+v-+sel)<1e-9;
+    return `<td class="${click?"hit ":""}${on?(click?"on":"cellhit"):""}" ${click?`data-act="tsel" data-v="${v}"`:""}>${tmin(v)}</td>`};
+  let h=`<table class="${cls||"pick"}"><tr><th style="width:56px">검출<br>시스템<br>등급</th><th style="width:74px">차단<br>시스템<br>등급</th>
+    <th colspan="3">누출시간 (누출구멍 크기별)</th></tr>
+    <tr><th></th><th></th><th>¼ 인치</th><th>1 인치</th><th>4 인치</th></tr>`;
+  T_ROWS.forEach(r=>{h+=`<tr><td><b>${r[0]}</b></td><td>${r[1]}</td>${r[2].map(C).join("")}</tr>`});
+  h+=`<tr><td colspan="5" class="note" style="text-align:left;font-size:8pt">검출·차단 시스템의 등급이 낮을수록(C 에 가까울수록), 그리고 누출구멍이 작을수록 누출시간을 길게 잡는다. 표의 값 대신 직접 입력할 수도 있다.</td></tr>`;
+  return h+`</table>`;
+}
 /* 누출계수 Cd — 지침 6.2.1(2)(나)① 및 <참고> 단위기호 */
 const CD_ROWS=[["원형 오리피스(통기구 등)","0.95 ~ 0.99","0.99"],
                ["모난(비원형) 오리피스","0.50 ~ 0.75","0.75"]];
@@ -559,7 +598,13 @@ const K_ROWS=[[1,"실험결과 또는 문헌자료에 폭발하한이 명확한 
 const UW_ROWS=[["공기보다 가벼운 가스/증기의 누출을 추정하기 위한 환기속도",[0.5,1.0,2.0,0.5,0.5,1.0]],
                ["공기보다 무거운 가스/증기의 누출을 추정하기 위한 환기속도",[0.3,0.6,1.0,0.15,0.3,1.0]],
                ["모든 고도에서 액체 풀(pool) 증발률을 추정하기 위한 환기속도",[0.25,0.25,0.25,0.1,0.1,0.1]]];
-const UW_NOTE=`– 일반적으로, 표의 값은 양호한 환기로 간주한다.<br>– 옥내의 경우, 일반적으로 평가는 <u>최소 공기 속도 0.05 m/s를 가정을 근거로</u> 하며, 이는 실제로 어디서나 해당된다.<br>– 특정 상황에서는 다양한 값을 가정할 수 있다(예, 공기 인입구/배출구 입구에 가까운 곳).<br>– 환기배치를 제어할 수 있는 경우, 최소 환기속도를 환산할 수 있다.`;
+/* 옥내 최소 공기속도 가정을 근거로 삼았을 때만 그 대목에 빨간 밑줄을 긋는다 */
+function uwNote(mark){
+  const t="최소 공기 속도 0.05 m/s를 가정을 근거로";
+  return `– 일반적으로, 표의 값은 양호한 환기로 간주한다.<br>– 옥내의 경우, 일반적으로 평가는 `
+    +(mark?`<span style="text-decoration:underline;text-decoration-color:#c0392b;text-decoration-thickness:1.5px;text-underline-offset:2px">${t}</span>`:t)
+    +` 하며, 이는 실제로 어디서나 해당된다.<br>– 특정 상황에서는 다양한 값을 가정할 수 있다(예, 공기 인입구/배출구 입구에 가까운 곳).<br>– 환기배치를 제어할 수 있는 경우, 최소 환기속도를 환산할 수 있다.`;
+}
 
 function tblRelease(sel,click){
   let h=`<table class="pick deftbl"><colgroup><col style="width:56px"><col></colgroup>`;
@@ -604,23 +649,23 @@ function tblK(sel,click,cls){
   });
   return h+`</table>`;
 }
-function tblUw(sel,click,cls,cell){
+function tblUw(sel,click,cls,cell,mark){
   const C=(v,id)=>{const on=id===cell;
     return `<td class="${click?"hit ":""}${on?(click?"on":"cellhit"):""}" ${click?`data-act="uw" data-v="${v}" data-cell="${id}"`:""}>${v}</td>`};
   let h=`<table class="${cls||"pick"}"><tr><th rowspan="2">옥외 위치의 형태</th><th colspan="3">장애물 없는 지역(m/s)</th><th colspan="3">장애물 있는 지역(m/s)</th></tr>
   <tr><th>≤2m</th><th>&gt;2~5m</th><th>&gt;5m</th><th>≤2m</th><th>&gt;2~5m</th><th>&gt;5m</th></tr>
   <tr><td class="lab">지표면에서 부터의 높이</td><td colspan="6" style="font-size:9px;color:#777">↓ 해당 칸을 클릭하면 환기속도가 적용됩니다</td></tr>`;
   UW_ROWS.forEach((r,i)=>{h+=`<tr><td class="lab">${r[0]}</td>${r[1].map((v,j)=>C(v,i+","+j)).join("")}</tr>`});
-  h+=`<tr><td colspan="7" class="note" style="text-align:left;font-size:8pt">${UW_NOTE}</td></tr>`;
+  h+=`<tr><td colspan="7" class="note" style="text-align:left;font-size:8pt">${uwNote(mark)}</td></tr>`;
   return h+`</table>`;
 }
-function tblUwDoc(sel,cell){
+function tblUwDoc(sel,cell,mark){
   const C=(v,id)=>`<td class="${id===cell?"cellhit":""}">${v}</td>`;
   let h=`<table class="doc"><tr><th rowspan="2">옥외 위치의 형태</th><th colspan="3">장애물 없는 지역(m/s)</th><th colspan="3">장애물 있는 지역(m/s)</th></tr>
   <tr><th>≤2m</th><th>&gt;2~5m</th><th>&gt;5m</th><th>≤2m</th><th>&gt;2~5m</th><th>&gt;5m</th></tr>
   <tr><td class="l">지표면에서 부터의 높이</td><td colspan="6"></td></tr>`;
   UW_ROWS.forEach((r,i)=>{h+=`<tr><td class="l">${r[0]}</td>${r[1].map((v,j)=>C(v,i+","+j)).join("")}</tr>`});
-  h+=`<tr><td colspan="7" class="note">${UW_NOTE}</td></tr>`;
+  h+=`<tr><td colspan="7" class="note">${uwNote(mark)}</td></tr>`;
   return h+`</table>`;
 }
 function tblZone(등급,희석,이용도,hi){
@@ -931,7 +976,7 @@ function srcPages(s,idx){
    <p style="font-size:9.5pt;color:#1546a0;font-weight:700;margin-top:8px">∎ 안전 계수 결정 (K)</p>
    ${tblK(s.k,false,"doc")}
    <p class="item">${N()} 환기속도 : <span class="orange">${s.uw} m/s</span></p>
-   <figure><figcaption>&lt;표 1&gt; 옥외 환기속도(u<sub>w</sub>)</figcaption>${tblUwDoc(s.uw,s.uwcell)}</figure>
+   <figure><figcaption>&lt;표 1&gt; 옥외 환기속도(u<sub>w</sub>)</figcaption>${tblUwDoc(s.uw,s.uwcell,s.uw옥내)}</figure>
    ${String(s.uw근거||"").trim()?`<p style="font-size:9.5pt" class="ind">근거 : ${esc(s.uw근거)}</p>`:""}
    <p class="item">${N()} 환기이용도 : <span class="orange">${esc(s.이용도==="직접입력"?s.이용도직접:s.이용도)}</span></p>
    <p class="ind2" style="font-size:9.5pt">(${r.이용도} : ${({"우수":"환기가 실제적으로 지속되는 상태","양호":"환기의 정상작동이 지속됨이 예측되는 상태, 빈번하지 않는 단기간 중단은 허용된다.","미흡":"환기가 양호 또는 우수 기준을 충족하지 않지만, 장기간 중단이 예상되지 않는 상태"})[r.이용도]})</p>`,K("a"));
@@ -942,7 +987,7 @@ function srcPages(s,idx){
     const 이차=s.등급==="2차";
     page(`<p class="item">${N()} ${이차?"2차 누출등급에서의 ":""}누출 구멍 단면적 : <span class="orange">${s.S}mm²</span></p>
      ${이차
-       ?`<figure><figcaption>&lt;표 1&gt; 2차누출등급의 누출구멍 단면적(권고)</figcaption>${tblHole(s.S,false,"doc tiny")}</figure>`
+       ?`<figure><figcaption>&lt;표 1&gt; 2차누출등급의 누출구멍 단면적(권고)</figcaption>${tblHole(s.S,false,"doc tiny",s.Scell)}</figure>`
        :`<p class="ind2" style="font-size:9.5pt;color:#1546a0">* 지침에 따라 ${esc(s.등급)} 누출등급에서 누출구멍 크기는 누출 오리피스(예: 상대적으로 예측 가능한 조건하에서 가스가 누출되는 다양한 통기구와 브리더밸브 등)의 형태와 크기에 따라 정해진다. &lt;표 1&gt;은 2차 누출등급에만 적용되므로 인용하지 않는다.</p>`}
      ${String(s.S근거||"").trim()?`<p class="ind" style="font-size:9.5pt">적용근거 : ${esc(s.S근거)}</p>`:""}`,K("b"),title);
   }
@@ -1151,10 +1196,21 @@ function renderSrcPane(){
     ${연속?"":`<p class="hint">탱크 액표면은 <b>연속 누출등급 전용</b>입니다. 대기와 연결된 고정 통기구가 설치된 고정지붕 탱크 내부의 액표면처럼 <b>장기간 대기에 개방된 액면</b>이 곧 누출원인 경우에만 해당합니다.</p>`}`;
     if(s.poolMode==="tank"){h+=F("탱크 내경 D(m)","src.D","number");}
     else{
-      h+=`<div class="row">${F("누출시간 t(s)","src.t","number")}
+      h+=`<label class="f"><span>누출시간 t <em>(초)</em></span>
+        <select data-act="tsel2">
+          <option value="">— 직접 입력 —</option>
+          ${T_PRESET.map(o=>`<option value="${o[1]}" ${+s.t===o[1]?"selected":""}>${o[0]} (${o[1]}초)</option>`).join("")}
+        </select></label>
+      <div class="row">${F("누출시간 t(초)","src.t","number",'placeholder="예) 1800"')}
       <label class="f"><span>ΔP 산정</span><select data-path="src.dPmode" data-live="1"><option value="head" ${s.dPmode==="head"?"selected":""}>액주높이 h</option><option value="given" ${s.dPmode!=="head"?"selected":""}>직접입력</option></select></label></div>
-      ${s.dPmode==="head"?F("액주높이 h(m)","src.h","number"):F("ΔP (Pa)","src.dP","number")}
-      <p class="hint">ΔP = ρ·g·h = ${num(r.dP,5)} Pa</p>`;
+      ${s.dPmode==="head"?F("액주높이 h(m)","src.h","number",'placeholder="예) 2"'):F("ΔP (Pa)","src.dP","number")}
+      <p class="hint">ΔP = ρ·g·h = ${num(r.dP,5)} Pa</p>
+      <details><summary style="cursor:pointer;font-size:11.5px;color:var(--blue);font-weight:600;margin:6px 0">누출시간 선정 참고 — 검출·차단 시스템 등급별 누출시간</summary>
+        <p class="hint" style="margin-top:4px">&lt;표 1&gt; 검출 및 차단시스템의 등급결정 기준</p>
+        ${tblDet()}
+        <p class="hint" style="margin-top:8px">&lt;표 2&gt; 검출 및 차단 시스템에 기반한 누출시간 <em>(칸을 누르면 적용됩니다)</em></p>
+        ${tblT(s.t,true)}
+      </details>`;
     }
   }else{
     h+=`<div class="row">${F("용기 내부압력 P(MPa abs)","src.P_MPa","number")}${F("유체 절대온도 T(K)","src.T_gas","number")}</div>
@@ -1172,7 +1228,7 @@ function renderSrcPane(){
    <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px">
      <button class="mini" data-act="uw" data-v="0.05">옥내 0.05 m/s 적용</button>
      <span style="font-size:11px;color:var(--ink-3)">옥내는 최소 0.05 m/s 가정</span></div>
-   ${tblUw(s.uw,true,null,s.uwcell)}
+   ${tblUw(s.uw,true,null,s.uwcell,s.uw옥내)}
    ${F("환기속도 u<sub>w</sub> (m/s)","src.uw","number")}
    ${F("환기속도 선정근거","src.uw근거")}
   </fieldset>`;
@@ -1236,6 +1292,8 @@ document.addEventListener("change",e=>{
     Object.assign(m,{명칭:k,식:b.식,M:b.M,rho:b.rho,비중:b.비중,gamma:b.gamma,인화점:b.인화점,발화점:b.발화점,비점:b.비점,Pv:b.Pv,LFL:b.LFL,그룹:b.그룹,온도:b.온도,CAS:b.CAS});
     renderPanes();}
   if(a==="setmat"){S.srcs[S.selSrc].matId=e.target.value;renderSrcPane();renderReport();}
+  if(a==="tsel2"){const v=e.target.value;if(v===""){renderSrcPane();return}
+    S.srcs[S.selSrc].t=+v;renderSrcPane();renderReport();}
 });
 document.addEventListener("click",e=>{
   const b=e.target.closest("[data-act]"); if(!b)return;
@@ -1268,7 +1326,8 @@ document.addEventListener("click",e=>{
     case"hole":s.S=+v;s.Scell=b.dataset.cell||"";renderSrcPane();renderReport();break;
     case"cd":s.Cd=+v;s.Cd근거=(CD_ROWS.find(x=>+x[2]===+v)||["",""])[0];renderSrcPane();renderReport();break;
     case"k":s.k=+v;s.k근거=K_ROWS.find(r=>+r[2]===+v)[1];renderSrcPane();renderReport();break;
-    case"uw":s.uw=+v;s.uwcell=b.dataset.cell||"";
+    case"tsel":s.t=+v;renderSrcPane();renderReport();break;
+    case"uw":s.uw=+v;s.uwcell=b.dataset.cell||"";s.uw옥내=!b.dataset.cell;
       s.uw근거 = (+v===0.05)?"옥내의 경우 최소 공기속도 0.05 m/s 가정(<표 1> 비고)":"<표 1> 옥외 환기속도 적용";
       renderSrcPane();renderReport();break;
   }
