@@ -113,13 +113,16 @@ table.pick tr.on td.lab{box-shadow:inset 3px 0 0 var(--mark)}
 /* 블록 = 페이지에 채워 넣는 최소 단위 */
 .blk{display:flow-root;position:relative}
 .blk+.blk{margin-top:6mm}
-.blk.brk::before{content:"";position:absolute;left:0;right:0;top:-3mm;border-top:2px dashed var(--mark)}
-.blkctl{position:absolute;top:0;right:-13mm;opacity:.22;transition:opacity .15s}
-.blk:hover .blkctl{opacity:1}
-.blkctl button{width:23px;height:23px;padding:0;border:1px solid var(--rule);background:#fff;border-radius:4px;
-  cursor:pointer;font-size:12px;line-height:1;color:var(--ink-2);font-family:var(--ui)}
-.blkctl button:hover{border-color:var(--blue);color:var(--blue);background:var(--blue-soft)}
-.blkctl button.on{background:var(--mark);border-color:var(--mark);color:#241000;font-weight:700;opacity:1}
+/* 줄(요소) 하나 = 페이지 나눔을 지정할 수 있는 최소 단위 */
+.it{position:relative}
+.it.brk:not(.top)::before{content:"";position:absolute;left:0;right:0;top:-1mm;border-top:2px dashed var(--mark)}
+.itctl{position:absolute;top:0;right:-12mm;opacity:0;transition:opacity .12s}
+.it:hover>.itctl,.itctl:hover{opacity:1}
+.itctl button{width:21px;height:21px;padding:0;border:1px solid var(--rule);background:#fff;border-radius:4px;
+  cursor:pointer;font-size:11px;line-height:1;color:var(--ink-2);font-family:var(--ui)}
+.itctl button:hover{border-color:var(--blue);color:var(--blue);background:var(--blue-soft)}
+.itctl button.on{background:var(--mark);border-color:var(--mark);color:#241000;font-weight:700}
+.it.brk>.itctl{opacity:1}
 .page.over{outline:1px dashed #c0392b;outline-offset:3px}
 .page.over::after{content:"이 블록은 A4 한 장을 넘습니다 — 인쇄 시 자동으로 나뉩니다";
   position:absolute;left:15mm;bottom:4mm;font-size:8pt;color:#c0392b;font-family:var(--ui)}
@@ -168,7 +171,10 @@ table.spec td.k{background:#fff;font-weight:600}
 .frac{display:inline-block;vertical-align:middle;text-align:center;margin:0 3px}
 .frac>span{display:block;padding:0 4px}
 .frac .den{border-top:1.2px solid #000}
-.sqrt{border-top:1.2px solid #000;padding:0 3px 0 2px;margin-left:-2px}
+/* 근호 : 내용 높이만큼 늘어나는 SVG + 내용 위의 가로선 */
+.sqrt{display:inline-flex;align-items:stretch;vertical-align:middle;margin:0 1px}
+.sqrt>.rad{flex:0 0 auto;width:.58em;height:auto;align-self:stretch;overflow:visible}
+.sqrt>.vin{border-top:1.25px solid currentColor;padding:1px 4px 0 3px}
 .deflist{font-size:10pt;margin:4px 0 8px 22px;line-height:1.7}
 .deflist b{font-style:italic;font-family:var(--eq);font-weight:400;display:inline-block;min-width:26px}
 .calc{font-family:var(--eq);font-size:10.5pt;margin:4px 0 4px 16px;line-height:1.9}
@@ -200,8 +206,8 @@ table.spec td.k{background:#fff;font-weight:600}
   /* 흐름에서 빼둔다. 흐름에 두면 마지막 줄 뒤 여백까지 밀려 빈 장이 생긴다 */
   .page .pno{position:absolute;bottom:6mm;right:13mm;margin:0;text-align:right}
   .cover{min-height:215mm}
-  .blkctl,#measure{display:none!important}
-  .blk.brk::before,.page.over::after{display:none!important}
+  .itctl,#measure{display:none!important}
+  .it.brk::before,.page.over::after{display:none!important}
   .page.over{outline:0}
   .blk{break-inside:auto;page-break-inside:auto}
   figure,table.spec,.sumbox,table.doc{break-inside:avoid;page-break-inside:avoid}
@@ -264,7 +270,7 @@ const MAT_LIB={
 function newMat(name){
   const b=MAT_LIB[name]||MAT_LIB["톨루엔"];
   return {id:uid(),명칭:name||"톨루엔",식:b.식,M:b.M,rho:b.rho,비중:b.비중,gamma:b.gamma,인화점:b.인화점,발화점:b.발화점,
-    비점:b.비점,Pv:b.Pv,LFL:b.LFL,그룹:b.그룹,온도:b.온도,CAS:b.CAS,비고:""};
+    비점:b.비점,Pv:b.Pv,LFL:b.LFL,그룹:b.그룹,온도:b.온도,CAS:b.CAS,비고:"",출처:""};
 }
 function newSrc(n){
   return {id:uid(),설비명:"설비-01",설명:"",누출원:"",matId:null,
@@ -272,7 +278,7 @@ function newSrc(n){
     Cd:1,S:2.5,S근거:"",
     t:3600,dPmode:"head",h:2,dP:0,
     poolMode:"spill",D:2.3,
-    P_MPa:1.0,T_gas:288,
+    P_MPa:1.0,T_gas:288,Z:1,
     k:1,k근거:"실험결과 또는 문헌자료에 폭발하한이 명확한 물질(단일 및 혼합물질)",
     uw:0.05,uw근거:"옥내의 경우 최소 공기속도 0.05 m/s 를 가정(<표 1> 비고)",uwLink:true,uwPool:0.05,
     이용도:"미흡",이용도직접:"",이용도적용:"미흡",
@@ -342,13 +348,14 @@ function calcSrc(s,m){
     r.Wg = null;
   }else{
     const g=+m.gamma, P=(+s.P_MPa)*1e6, T=+s.T_gas;
-    r.gamma=g;r.P=P;r.T=T;
+    const Z=(+s.Z>0)?+s.Z:1;              // 압축계수. 지침 6.2.3.1(3),(4)
+    r.gamma=g;r.P=P;r.T=T;r.Z=Z;
     r.Pc = PA_ATM*Math.pow((g+1)/2, g/(g-1));
     r.choked = P>=r.Pc;
     if(r.choked){
-      r.Wg=(+s.Cd)*S_m2*P*Math.sqrt(g*M/(R_GAS*T)*Math.pow(2/(g+1),(g+1)/(g-1)));
+      r.Wg=(+s.Cd)*S_m2*P*Math.sqrt(g*M/(Z*R_GAS*T)*Math.pow(2/(g+1),(g+1)/(g-1)));
     }else{
-      const inner=M/(R_GAS*T)*(2*g/(g-1))*(1-Math.pow(PA_ATM/P,(g-1)/g));
+      const inner=M/(Z*R_GAS*T)*(2*g/(g-1))*(1-Math.pow(PA_ATM/P,(g-1)/g));
       r.Wg=(+s.Cd)*S_m2*P*Math.sqrt(Math.max(inner,0))*Math.pow(PA_ATM/P,1/g);
     }
     r.rho_g = PA_ATM*M/(R_GAS*Ta);
@@ -632,15 +639,24 @@ function tblZone(등급,희석,이용도,hi){
   return `<table class="doc" style="font-size:8.5pt">${head}${body}${note}</table>`;
 }
 
-/* ===================== 수식 HTML ===================== */
+/* ===================== 수식 HTML =====================
+   근호는 글자(√)로 그리면 내용이 두 줄 이상일 때 기호가 본문 크기 그대로
+   바닥에 남고 윗선이 지수를 가로지른다. 내용 높이에 맞춰 늘어나는 SVG 로 그린다.
+   vector-effect 로 선 굵기는 늘어나지 않게 고정한다. */
+function SQ(inner){
+  return `<span class="sqrt"><svg class="rad" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">`
+    +`<path d="M0,63 L21,55 L45,98 L100,0" fill="none" stroke="currentColor" stroke-width="1.25"`
+    +` vector-effect="non-scaling-stroke" stroke-linejoin="miter" stroke-linecap="square"/></svg>`
+    +`<span class="vin">${inner}</span></span>`;
+}
 const EQ={
- liq:`<span class="fm"><i>W</i> = <i>C<sub>d</sub></i><i>S</i><span class="sqrt">√<span style="border-top:1.2px solid #000">2<i>ρ</i>Δ<i>P</i></span></span></span>`,
+ liq:`<span class="fm"><i>W</i> = <i>C<sub>d</sub></i><i>S</i>${SQ(`2<i>ρ</i>Δ<i>P</i>`)}</span>`,
  pool:`<span class="fm"><i>Q<sub>g</sub></i> = <span class="frac"><span>6.5<i>u<sub>w</sub></i><sup>0.78</sup><i>A<sub>p</sub></i><i>P<sub>v</sub></i></span><span class="den">10<sup>5</sup><i>M</i><sup>0.333</sup></span></span> × <span class="frac"><span><i>T<sub>a</sub></i></span><span class="den"><i>T</i></span></span> (m³/s)</span>`,
  pc:`<span class="fm"><i>P<sub>C</sub></i> = <i>P<sub>a</sub></i>[<span class="frac"><span><i>γ</i>+1</span><span class="den">2</span></span>]<sup><i>γ</i>/(<i>γ</i>−1)</sup></span>`,
- nonchoked:`<span class="fm"><i>W<sub>g</sub></i> = <i>C<sub>d</sub>SP</i><span class="sqrt">√<span style="border-top:1.2px solid #000"><span class="frac"><span><i>M</i></span><span class="den"><i>ZRT</i></span></span><span class="frac"><span>2<i>γ</i></span><span class="den"><i>γ</i>−1</span></span>[1−(<span class="frac"><span><i>P<sub>a</sub></i></span><span class="den"><i>P</i></span></span>)<sup>(<i>γ</i>−1)/<i>γ</i></sup>]</span></span>(<span class="frac"><span><i>P<sub>a</sub></i></span><span class="den"><i>P</i></span></span>)<sup>1/<i>γ</i></sup></span>`,
- choked:`<span class="fm"><i>W<sub>g</sub></i> = <i>C<sub>d</sub>SP</i><span class="sqrt">√<span style="border-top:1.2px solid #000"><i>γ</i><span class="frac"><span><i>M</i></span><span class="den"><i>ZRT</i></span></span>[<span class="frac"><span>2</span><span class="den"><i>γ</i>+1</span></span>]<sup>(<i>γ</i>+1)/(<i>γ</i>−1)</sup></span></span></span>`,
+ nonchoked:`<span class="fm"><i>W<sub>g</sub></i> = <i>C<sub>d</sub>SP</i>${SQ(`<span class="frac"><span><i>M</i></span><span class="den"><i>ZRT</i></span></span><span class="frac"><span>2<i>γ</i></span><span class="den"><i>γ</i>−1</span></span>[1−(<span class="frac"><span><i>P<sub>a</sub></i></span><span class="den"><i>P</i></span></span>)<sup>(<i>γ</i>−1)/<i>γ</i></sup>]`)}(<span class="frac"><span><i>P<sub>a</sub></i></span><span class="den"><i>P</i></span></span>)<sup>1/<i>γ</i></sup></span>`,
+ choked:`<span class="fm"><i>W<sub>g</sub></i> = <i>C<sub>d</sub>SP</i>${SQ(`<i>γ</i><span class="frac"><span><i>M</i></span><span class="den"><i>ZRT</i></span></span>[<span class="frac"><span>2</span><span class="den"><i>γ</i>+1</span></span>]<sup>(<i>γ</i>+1)/(<i>γ</i>−1)</sup>`)}</span>`,
  char:`<span class="fm">누출특성 = <span class="frac"><span><i>W<sub>g</sub></i></span><span class="den"><i>ρ<sub>g</sub></i> × <i>k</i> × LFL</span></span> = <span class="frac"><span><i>Q<sub>g</sub></i></span><span class="den"><i>k</i> × LFL</span></span></span>`,
- ap:`<span class="fm"><i>A<sub>p</sub></i> = <span class="frac"><span><i>V</i><sub>누출</sub></span><span class="den">0.01 m</span></span> , <i>V</i><sub>누출</sub> = <span class="frac"><span><i>W</i> × <i>t</i></span><span class="den"><i>ρ</i></span></span> , <i>W</i> = <i>C<sub>d</sub>S</i><span class="sqrt">√<span style="border-top:1.2px solid #000">2<i>ρ</i>Δ<i>P</i></span></span></span>`
+ ap:`<span class="fm"><i>A<sub>p</sub></i> = <span class="frac"><span><i>V</i><sub>누출</sub></span><span class="den">0.01 m</span></span> , <i>V</i><sub>누출</sub> = <span class="frac"><span><i>W</i> × <i>t</i></span><span class="den"><i>ρ</i></span></span> , <i>W</i> = <i>C<sub>d</sub>S</i>${SQ(`2<i>ρ</i>Δ<i>P</i>`)}</span>`
 };
 const DEF={
  liq:`<div class="deflist"><b><i>W</i></b> : 액체의 누출율 (kg/s)<br><b><i>C<sub>d</sub></i></b> : 누출계수 (단위 없음), 일반적으로 모난 오리피스는 0.5~0.75<br><b><i>S</i></b> : 유체가 누출되는 개구부(구멍)의 단면적 (m²)<br><b><i>ρ</i></b> : 액체 밀도 (kg/m³)<br><b>Δ<i>P</i></b> : 개구부에서의 누설 압력 차 (Pa)</div>`,
@@ -697,12 +713,12 @@ function buildReport(){
     const headH=kids[2*i].offsetHeight, body=kids[2*i+1];
     const box=body.getBoundingClientRect();
     const cs=Array.prototype.slice.call(body.children);
-    if(!cs.length){items.push({b,headH,html:b.html,h:box.height,first:true,keep:false});return}
+    if(!cs.length){items.push({b,headH,key:b.key+"#0",html:b.html,h:box.height,first:true,keep:false});return}
     const tops=cs.map(c=>c.getBoundingClientRect().top);
     cs.forEach((c,j)=>{
       let h=(j<cs.length-1?tops[j+1]:box.bottom)-tops[j];
       if(j===0)h+=tops[0]-box.top;
-      items.push({b,headH,html:c.outerHTML,h,first:j===0,keep:isKeep(c)});
+      items.push({b,headH,key:b.key+"#"+j,html:c.outerHTML,h,first:j===0,keep:isKeep(c)});
     });
   });
   mez.innerHTML="";
@@ -712,7 +728,9 @@ function buildReport(){
   const flush=()=>{if(cur.length){pages.push(cur);cur=[];curH=0;curKey=null}};
   items.forEach(it=>{
     const b=it.b;
-    if(cur.length&&it.first&&(b.alone||mode==="each"||brk.has(b.key)))flush();
+    // 줄 단위 강제 나눔 : 이 줄에 표시가 있거나, 블록 첫 줄에 블록 단위 표시가 있을 때
+    it.forced = brk.has(it.key) || (it.first&&brk.has(b.key)) || (it.first&&(b.alone||mode==="each"));
+    if(cur.length&&it.forced)flush();
     let gap=(cur.length&&curKey!==b.key)?GAP:0;
     if(cur.length&&curH+gap+it.h>BUDGET)flush();
     if(!cur.length){gap=0;curH=it.headH}          // 새 페이지 맨 위에는 머리말이 붙는다
@@ -742,19 +760,22 @@ function buildReport(){
     const over=tot>FULL+1;
     pn++;
     h+=`<section class="page${over?" over":""}">`
-      +groups.map((g,gi)=>`<div class="blk${brk.has(g.b.key)&&g.items[0].first?" brk":""}">`
+      +groups.map((g,gi)=>`<div class="blk">`
         +(gi===0?g.b.head:"")
-        +g.items.map(it=>it.html).join("")
-        +(g.b.alone||!g.items[0].first?"":blkCtl(g.b.key,brk.has(g.b.key)))
+        +g.items.map((it,ii)=>itemHtml(it,brk,gi===0&&ii===0)).join("")
         +`</div>`).join("")
       +`<div class="pno">- ${pn} -</div></section>`;
     if(over)pn+=Math.ceil(tot/FULL)-1;   // 한 장을 넘는 요소는 인쇄 시 여러 장이 된다
   });
   $("#report").innerHTML=h;
 }
-function blkCtl(k,on){
-  return `<div class="blkctl"><button data-act="brk" data-k="${k}" class="${on?"on":""}"
-   title="${on?"강제 페이지 나눔 해제 — 앞 블록에 이어 붙입니다":"이 블록을 새 페이지에서 시작합니다"}">${on?"⏏":"✂"}</button></div>`;
+/* 줄 하나 = .it 한 칸. 오른쪽 여백의 ✂ 로 그 줄부터 새 페이지를 시작한다 */
+function itemHtml(it,brk,atTop){
+  const on=brk.has(it.key)||(it.first&&brk.has(it.b.key));
+  const k=brk.has(it.b.key)&&it.first?it.b.key:it.key;   // 예전 블록 단위 표시도 그대로 해제되게
+  return `<div class="it${on?" brk":""}${atTop?" top":""}">${it.html}`
+    +`<span class="itctl"><button data-act="brk" data-k="${k}" class="${on?"on":""}"`
+    +` title="${on?"이 줄의 페이지 나눔 해제 — 앞 내용에 이어 붙입니다":"이 줄부터 새 페이지에서 시작합니다"}">${on?"⏏":"✂"}</button></span></div>`;
 }
 
 function collectBlocks(){
@@ -809,7 +830,12 @@ function collectBlocks(){
    ${String(d.물질비고||"").trim()?`<p class="ind" style="font-size:9.5pt">1) ${esc(d.물질비고)}</p>`:""}
    <p style="font-size:9pt;margin-top:10px">Explosion Area Classification Data Sheet – Part 1 : Flammable material list and Characteristics</p>
    <p style="font-size:9pt">Plant Name : ${ph(d.회사,"(사업장명)")}<br>Plant Location : ${ph(d.소재지,"(소재지)")}</p>
-   ${part1Table()}`,"doc-8");
+   ${part1Table()}
+   ${S.mats.some(x=>String(x.출처||"").trim())
+     ?`<div style="font-size:8.5pt;margin-top:5px;line-height:1.6">물성 출처 : ${
+        S.mats.map((x,i)=>String(x.출처||"").trim()?`${i+1}) ${esc(x.명칭)} — ${esc(x.출처)}`:null)
+         .filter(Boolean).join("<br>")}</div>`
+     :""}`,"doc-8");
   page(`<h3 class="sub">4.2 누출원 목록</h3>
    <p style="font-size:9pt">Explosion Area Classification Data Sheet – Part 2 : List of source of release</p>
    <p style="font-size:9pt">Plant Name : ${ph(d.회사,"(사업장명)")}<br>Plant Location : ${ph(d.소재지,"(소재지)")}</p>
@@ -881,10 +907,15 @@ function srcPages(s,idx){
    ${String(s.uw근거||"").trim()?`<p style="font-size:9.5pt" class="ind">근거 : ${esc(s.uw근거)}</p>`:""}
    <p class="item">${N()} 환기이용도 : <span class="orange">${esc(s.이용도==="직접입력"?s.이용도직접:s.이용도)}</span></p>
    <p class="ind2" style="font-size:9.5pt">(${r.이용도} : ${({"우수":"환기가 실제적으로 지속되는 상태","양호":"환기의 정상작동이 지속됨이 예측되는 상태, 빈번하지 않는 단기간 중단은 허용된다.","미흡":"환기가 양호 또는 우수 기준을 충족하지 않지만, 장기간 중단이 예상되지 않는 상태"})[r.이용도]})</p>`,K("a"));
-  /* 블록 B : 누출구멍 단면적 */
+  /* 블록 B : 누출구멍 단면적.
+     <표 1>은 지침 6.4(3) 에 따라 2차 누출등급 전용이다. 연속·1차는 통기구·브리더밸브 등
+     실제 누출 오리피스의 형태와 크기로 정하므로 표를 싣지 않는다. */
   if(hasHole){
-    page(`<p class="item">${N()} ${s.등급==="2차"?"2차 누출등급에서의 ":""}누출 구멍 단면적(권고) : <span class="orange">${s.S}mm²</span></p>
-     <figure><figcaption>&lt;표 1&gt; 2차누출등급의 누출구멍 단면적(권고)</figcaption>${tblHole(s.S,false,"doc tiny")}</figure>
+    const 이차=s.등급==="2차";
+    page(`<p class="item">${N()} ${이차?"2차 누출등급에서의 ":""}누출 구멍 단면적 : <span class="orange">${s.S}mm²</span></p>
+     ${이차
+       ?`<figure><figcaption>&lt;표 1&gt; 2차누출등급의 누출구멍 단면적(권고)</figcaption>${tblHole(s.S,false,"doc tiny")}</figure>`
+       :`<p class="ind2" style="font-size:9.5pt;color:#1546a0">* 지침 6.4(3) : ${esc(s.등급)} 누출등급에서 누출구멍 크기는 누출 오리피스(예: 상대적으로 예측 가능한 조건하에서 가스가 누출되는 다양한 통기구와 브리더밸브 등)의 형태와 크기에 따라 정해진다. &lt;표 1&gt;은 2차 누출등급에만 적용되므로 인용하지 않는다.</p>`}
      ${String(s.S근거||"").trim()?`<p class="ind" style="font-size:9.5pt">적용근거 : ${esc(s.S근거)}</p>`:""}`,K("b"),title);
   }
   /* 블록 C : 누출률/증발률 */
@@ -958,7 +989,7 @@ function gasCalc(s,m,r,cn){
   용기 내부압력 <i>P</i> = ${Math.round(r.P).toLocaleString()} Pa ${r.choked?"≥":"&lt;"} <i>P<sub>C</sub></i> → <span class="res">${r.choked?"음속누설(Chocked)":"아음속누설(Non chocked)"}</span></div>
   <p class="ind">⑵ 가스 누출률</p>${r.choked?EQ.choked:EQ.nonchoked}${DEF.gas}
   <div class="calc">∴ <i>W<sub>g</sub></i> = ${s.Cd} × ${S6} × ${Math.round(r.P).toLocaleString()} × √(…) = <span class="res">${num(r.Wg,3)} kg/s</span>
-  &nbsp;<span style="font-size:8.5pt">(M=${m.M}, γ=${m.gamma}, T=${s.T_gas}K, Z=1, R=8314)</span></div>
+  &nbsp;<span style="font-size:8.5pt">(M=${m.M}, γ=${m.gamma}, T=${s.T_gas}K, Z=${r.Z}, R=8314)</span></div>
   <p class="ind">⑶ 가스(증기) 밀도</p>
   <div class="calc"><i>ρ<sub>g</sub></i> = <span class="frac"><span><i>P<sub>a</sub></i> × <i>M</i></span><span class="den"><i>R</i> × <i>T<sub>a</sub></i></span></span>
    = (101,325 × ${m.M}) / (8314 × ${fx(r.Ta,2)}) = <span class="res">${num(r.rho_g,4)} kg/m³</span><br>
@@ -1006,7 +1037,8 @@ function renderDocPane(){
       <button class="mini" data-act="clrbrk">수동 나눔 모두 해제</button>
       <span style="font-size:11px;color:var(--ink-3)">현재 ${(S.doc.breaks||[]).length}개 지정됨</span>
     </div>
-    <p class="hint" style="margin-top:8px">미리보기에서 각 항목 오른쪽의 <b>✂</b> 를 누르면 그 항목부터 새 페이지에서 시작합니다. 다시 누르면 해제됩니다.</p>`:""}
+    <p class="hint" style="margin-top:8px">미리보기에서 줄 위에 마우스를 올리면 오른쪽 여백에 <b>✂</b> 가 나타납니다.
+     누르면 <b>그 줄부터</b> 새 페이지에서 시작하고, 지정된 자리는 주황 점선으로 표시됩니다. 다시 누르면 해제됩니다.</p>`:""}
   </fieldset>
   <div class="readout"><h4>출력 순서</h4>
    <div style="font-size:11.5px;line-height:1.9;color:var(--ink-2)">
@@ -1026,7 +1058,12 @@ function renderMatPane(){
    <div class="row r3">${F("증기압 Pv(kPa)","mat.Pv","number")}${F("LFL(vol%)","mat.LFL","number")}${F("폴리트로프 γ","mat.gamma","number")}</div>
    <div class="row r3">${F("인화점(℃)","mat.인화점")}${F("발화점(℃)","mat.발화점")}${F("비점(℃)","mat.비점")}</div>
    <div class="row r3">${F("기기그룹","mat.그룹")}${F("온도등급","mat.온도")}${F("CAS No.","mat.CAS")}</div>
+   <p class="hint">γ(단열팽창 폴리트로프 지수) = 정압비열/정적비열. 지침 &lt;참고&gt; 단위기호에 따르면 이상기체에서
+    γ = M·c<sub>p</sub> / (M·c<sub>p</sub> − R) 로 구합니다. 가스 누출률(식 3·식 4)과 임계압력(식 2)에만 쓰이며,
+    액체·풀 증발 계산에는 영향을 주지 않습니다.</p>
    ${F("비고","mat.비고")}
+   ${F("물성 출처","mat.출처","text",'placeholder="예) 물질안전보건자료(MSDS) 2024.03 / KOSHA 화학물질정보"')}
+   <p class="hint">내장 프리셋 값은 참고용입니다. 계산서에 쓰기 전에 실제 취급 물질의 MSDS 와 대조하고, 출처를 남기세요.</p>
    <button class="mini danger" data-act="delmat">이 물질 삭제</button>
   </fieldset>`;}
   $("#pane-mat").innerHTML=h;
@@ -1066,7 +1103,9 @@ function renderSrcPane(){
   h+=`<fieldset><legend>② 누출 조건</legend>
    <label class="f"><span>상태</span><select data-path="src.상태" data-live="1"><option value="liquid" ${liq?"selected":""}>액체 (Liquid)</option><option value="gas" ${!liq?"selected":""}>가스/증기 (Gas)</option></select></label>
    <div class="row">${F("누출계수 Cd","src.Cd","number")}${F("누출구멍 단면적 S(㎟)","src.S","number")}</div>
-   <details><summary style="cursor:pointer;font-size:11.5px;color:var(--blue);font-weight:600;margin-bottom:6px">&lt;표 1&gt; 2차누출등급 누출구멍 단면적 표에서 선택</summary>${tblHole(s.S,true)}</details>
+   ${s.등급==="2차"
+     ?`<details><summary style="cursor:pointer;font-size:11.5px;color:var(--blue);font-weight:600;margin-bottom:6px">&lt;표 1&gt; 2차누출등급 누출구멍 단면적 표에서 선택</summary>${tblHole(s.S,true)}</details>`
+     :`<div class="warn">&lt;표 1&gt;은 <b>2차 누출등급 전용</b>입니다. ${esc(s.등급)} 누출등급에서는 지침 6.4(3)에 따라 통기구·브리더밸브 등 <b>실제 누출 오리피스의 형태와 크기</b>로 S 를 정하고, 그 근거를 아래에 적으세요.</div>`}
    ${F("S 적용근거","src.S근거","text",'placeholder="예) 저속 가동 부품류 – 밸브 스템 패킹(부식 등에 의해 확대될 수 있는 조건)"')}`;
   if(liq){
     h+=`<label class="f"><span>풀(Pool) 산정방식</span><select data-path="src.poolMode" data-live="1">
@@ -1081,7 +1120,11 @@ function renderSrcPane(){
     }
   }else{
     h+=`<div class="row">${F("용기 내부압력 P(MPa abs)","src.P_MPa","number")}${F("유체 절대온도 T(K)","src.T_gas","number")}</div>
-    <p class="hint">γ 는 물질 탭에서 설정합니다. 현재 γ = ${m?m.gamma:"-"}</p>`;
+    ${F("압축계수 Z","src.Z","number")}
+    <p class="hint">Z 는 이상기체에서 1.0 입니다. 지침 6.2.3.1(4) : 중간 압력까지는 Z=1.0 이 합리적인 근사값이나,
+     <b>500 kPa(5 bar) 이상</b>에서는 가스 특성 데이터북의 실제 압축계수를 적용합니다.
+     ${(+s.P_MPa)*1000>=500?`<b style="color:var(--red)">현재 ${num((+s.P_MPa)*1000,4)} kPa 이므로 실제 Z 확인이 필요합니다.</b>`:""}</p>
+    <p class="hint">γ(단열팽창 폴리트로프 지수)는 물질 탭에서 설정합니다. 현재 γ = ${m?m.gamma:"-"}</p>`;
   }
   h+=`</fieldset>`;
 
@@ -1155,6 +1198,7 @@ document.addEventListener("change",e=>{
   if(a==="preset"){const k=e.target.value;if(!k)return;
     const b=MAT_LIB[k];const m=S.mats[S.selMat];
     Object.assign(m,{명칭:k,식:b.식,M:b.M,rho:b.rho,비중:b.비중,gamma:b.gamma,인화점:b.인화점,발화점:b.발화점,비점:b.비점,Pv:b.Pv,LFL:b.LFL,그룹:b.그룹,온도:b.온도,CAS:b.CAS});
+    if(!String(m.출처||"").trim())m.출처="";
     renderPanes();}
   if(a==="setmat"){S.srcs[S.selSrc].matId=e.target.value;renderSrcPane();renderReport();}
 });
