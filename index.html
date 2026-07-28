@@ -268,10 +268,16 @@ const R_GAS=8314, PA_ATM=101325, G=9.8;
    "상압"은 게이지 0(= 절대 1atm)이라는 뜻이므로 액체 ΔP 는 액주 ρgh 만 남는다. */
 const P_UNITS={"ATM":null,"kPa":1e3,"MPa":1e6,"bar":1e5,"kgf/cm²":98066.5,"psi":6894.757};
 
+/* 빈칸을 0 으로 보면 안 된다. +"" 는 0 이라, 단위만 고르고 숫자를 아직 안 넣은 상태가
+   "0 bar 로 가압됨"으로 읽혀 엉뚱한 경고가 떴다. 빈칸은 미입력으로 돌려준다. */
+function popNum(s){
+  if(s.Pop===""||s.Pop==null)return NaN;
+  const v=+s.Pop; return isFinite(v)?v:NaN;
+}
 function popPa(s){
   const u=s.PopUnit||"ATM", f=P_UNITS[u];
   if(f==null)return {isATM:true,ok:true,Pg:0,Pabs:PA_ATM};       // 상압
-  const v=+s.Pop;
+  const v=popNum(s);
   if(!isFinite(v))return {isATM:false,ok:false,Pg:NaN,Pabs:NaN}; // 미입력
   const Pabs=(s.PopBasis==="a")?v*f:v*f+PA_ATM;
   return {isATM:false,ok:true,Pg:Pabs-PA_ATM,Pabs:Pabs};
@@ -280,42 +286,69 @@ function popPa(s){
 function popLabel(s){
   const u=s.PopUnit||"ATM";
   if(P_UNITS[u]==null)return "ATM";
-  const v=+s.Pop;
+  const v=popNum(s);
   return isFinite(v)?`${trim(String(v))} ${u}(${s.PopBasis==="a"?"a":"g"})`:"-";
 }
 
+/* ===================== 취급물질의 상(相) =====================
+   지침 <표3> 누출원목록의 범례 : G(가스) · L(액체) · LG(액화가스) · S(고체).
+   먼저 상을 고르고, 그 상에서 뜻이 통하는 누출원 유형만 고르게 한다. */
+const PHASES={
+ "L" :{label:"액체 (L)",     hint:"상압 이상에서 액체로 저장·이송되는 인화성 액체"},
+ "G" :{label:"가스 (G)",     hint:"압축가스·증기 등 기체 상태로 취급되는 인화성 가스"},
+ "LG":{label:"액화가스 (LG)",hint:"LPG·암모니아 등 가압해 액화한 가스. 누출 시 플래시 증발한다"}
+};
+
 /* ===================== 누출원 유형 =====================
    지침 부속서의 계산 예시가 유형마다 압력을 다르게 잡는다. 그 차이를 프리셋으로 굳혀 둔다.
-     mode  liquid = 액체 오리피스(식1) → 증발풀(식6)
-           gas    = 가스 오리피스(식3)(식4)
-           flash  = 가압 액화가스. 액체 오리피스로 W 를 구한 뒤 플래시분율만큼만 증기가 된다
-           given  = 오리피스식을 쓰지 않고 제조사 데이터의 누출률을 그대로 쓴다
-     atm   true 면 상압 고정(운전압력 입력칸을 잠근다)
-     head  액주 ρgh 를 ΔP 에 넣을지. "opt" 는 넣되 기본 0 (토출압이 지배적이라)  */
+     mode   liquid = 액체 오리피스(식1) → 증발풀(식6)
+            gas    = 가스 오리피스(식3)(식4)
+            flash  = 가압 액화가스. 액체 오리피스로 W 를 구한 뒤 플래시분율만큼만 증기가 된다
+            given  = 오리피스식을 쓰지 않고 제조사 데이터의 누출률을 그대로 쓴다
+     phases 이 유형을 고를 수 있는 상
+     atm    이 유형의 기본이 상압인가 (잠그지는 않는다)
+     head   액주 ρgh 를 ΔP 에 넣을지. "opt" 는 넣되 기본 0 (토출압이 지배적이라)  */
 const SRC_TYPES={
- "상압탱크":{mode:"liquid",code:"L",atm:true,head:true,pool:"both",
+ "상압탱크":{mode:"liquid",phases:["L"],atm:true,head:true,pool:"both",
    desc:"대기와 연결된 고정 통기구가 있는 고정지붕 탱크 등 대기 개방 액면",
+   press:"ΔP = ρgh (운전압력 상압)",
    ref:"지침 5.3.1 연속누출등급 ① / 교우산업 계산서 ST-01~08"},
- "가압탱크":{mode:"liquid",code:"L",atm:false,head:true,pool:"spill",
+ "가압탱크":{mode:"liquid",phases:["L"],atm:false,head:true,pool:"spill",
    desc:"질소 봉입 등으로 가압된 저장용기. ΔP 에 게이지 운전압력이 더해진다",
+   press:"ΔP = P게이지 + ρgh",
    ref:"지침 6.2.2 (식1) — ΔP 는 '개구부에서의 누설 압력차'"},
- "펌프":{mode:"liquid",code:"L",atm:false,head:"opt",pool:"spill",
+ "펌프":{mode:"liquid",phases:["L"],atm:false,head:"opt",pool:"spill",
    desc:"펌프·압축기 기계씰 및 토출배관. ΔP 는 토출압이 지배하고 액주는 보통 무시한다",
+   press:"ΔP = 토출압(게이지). 액주는 기본 0",
    ref:"지침 부속서 2.2.1 (1)(2) 산업용 펌프 — ΔP = 15 bar 로 계산"},
- "액체배관":{mode:"liquid",code:"L",atm:false,head:true,pool:"spill",
+ "액체배관":{mode:"liquid",phases:["L"],atm:false,head:true,pool:"spill",
    desc:"액체 배관의 플랜지·밸브 스템 패킹·연결부",
+   press:"ΔP = P게이지 + ρgh",
    ref:"지침 <표1> 2차 누출등급의 누출구멍 단면적"},
- "가스배관":{mode:"gas",code:"G",atm:false,head:false,pool:null,
+ "가스배관":{mode:"gas",phases:["G"],atm:false,head:false,pool:null,
    desc:"가스 배관의 제어밸브 스템 패킹·플랜지 등 밀봉부",
+   press:"P = 절대압 (게이지 + 1 atm)",
    ref:"지침 부속서 2.2.2 (1) 제어밸브 — 사용압력 10 bar(게이지)"},
- "액화가스":{mode:"flash",code:"LG",atm:false,head:"opt",pool:null,
+ "가스용기":{mode:"gas",phases:["G"],atm:false,head:false,pool:null,
+   desc:"압축가스 용기·리시버 등 가압 용기의 밀봉부",
+   press:"P = 절대압 (게이지 + 1 atm)",
+   ref:"지침 6.2.3 (식2)(식3)(식4) — P 는 '용기의 내부압력'"},
+ "액화가스":{mode:"flash",phases:["LG"],atm:false,head:"opt",pool:null,
    desc:"LPG 등 가압 액화가스. 누출점에서 일부가 플래시 증발하고 나머지는 배출된다",
+   press:"ΔP = P게이지 + ρgh → Wg = W × Fv",
    ref:"지침 6.3.3 액화가스 / 부속서 2.2.1(1) — Wg 는 '증기화된 액체비율'로 결정"},
- "브리더밸브":{mode:"given",code:"G",atm:true,head:false,pool:null,
+ "브리더밸브":{mode:"given",phases:["L","G","LG"],atm:true,head:false,pool:null,
    desc:"브리더밸브·통기구 등 제조사가 누출률을 제시하는 누출원. 오리피스식을 쓰지 않는다",
+   press:"압력을 쓰지 않음 (목록표 표기용)",
    ref:"지침 부속서 2.2.1 (3) 브리더밸브 — 누출률 4.50×10⁻³ kg/s (제조사 데이터)"}
 };
-function tyOf(s){return SRC_TYPES[s.srcType]||SRC_TYPES["상압탱크"]}
+function typesOf(ph){return Object.keys(SRC_TYPES).filter(k=>SRC_TYPES[k].phases.indexOf(ph)>=0)}
+function tyOf(s){
+  const ph=PHASES[s.상] ? s.상 : "L";
+  const t=SRC_TYPES[s.srcType];
+  /* 상과 유형이 어긋나면(상을 바꾼 직후 등) 그 상의 첫 유형으로 되돌린다 */
+  return (t&&t.phases.indexOf(ph)>=0) ? t : SRC_TYPES[typesOf(ph)[0]];
+}
 
 /* ===================== 상태 ===================== */
 const MAT_LIB={
@@ -338,7 +371,7 @@ function newMat(name){
 }
 function newSrc(n){
   return {id:uid(),설비명:"설비-01",설명:"",누출원:"",matId:null,
-    위치:"옥내",srcType:"상압탱크",상태:"liquid",등급:"2차",등급근거:"",
+    위치:"옥내",상:"L",srcType:"상압탱크",상태:"liquid",등급:"2차",등급근거:"",
     Wg직접:"",Fv:"",Fv근거:"",
     Cd:0.75,Cd근거:"모난(비원형) 오리피스",S:2.5,Scell:"",S근거:"",
     t:"",dPmode:"head",h:"",dP:0,
@@ -375,6 +408,7 @@ function fillSrcDefaults(s){
   if(s.srcType==null||!SRC_TYPES[s.srcType])
     s.srcType = s.상태==="gas" ? "가스배관"
       : (P_UNITS[s.PopUnit]==null ? "상압탱크" : "가압탱크");
+  if(!PHASES[s.상]) s.상 = SRC_TYPES[s.srcType].phases[0];
 }
 function uid(){return Math.random().toString(36).slice(2,9)}
 
@@ -428,7 +462,10 @@ function calcSrc(s,m){
   r.LFL=LFL;r.S_m2=S_m2;
   const Ta=+s.Ta+273.15, Top=+s.Top+273.15;
   r.Ta=Ta;r.Top=Top;
-  const TY=tyOf(s); r.ty=TY; r.mode=TY.mode; r.code=TY.code;
+  const TY=tyOf(s); r.ty=TY; r.mode=TY.mode;
+  if(!PHASES[s.상])s.상="L";
+  if(SRC_TYPES[s.srcType]!==TY)s.srcType=Object.keys(SRC_TYPES).find(k=>SRC_TYPES[k]===TY);
+  r.code=s.상;                                    // 목록표의 상태칸 (지침 <표3> 범례 G/L/LG)
   s.상태 = (TY.mode==="liquid"||TY.mode==="flash") ? "liquid" : "gas";
   r.phase=s.상태;
   /* 탱크 액표면 풀은 상압탱크(대기 개방 액면)에서만 뜻이 있다 */
@@ -1313,9 +1350,10 @@ function popField(s){
    <select data-path="src.PopUnit" data-live="1" style="min-width:0">
     ${Object.keys(P_UNITS).map(k=>`<option value="${k}" ${k===u?"selected":""}>${k==="ATM"?"상압(ATM)":k}</option>`).join("")}</select>
    <select data-path="src.PopBasis" data-live="1" style="min-width:0" ${atm?"disabled":""}>
-    <option value="g" ${s.PopBasis!=="a"?"selected":""}>게이지</option>
-    <option value="a" ${s.PopBasis==="a"?"selected":""}>절대</option></select>
-  </span></label>`;
+    <option value="g" ${s.PopBasis!=="a"?"selected":""}>게이지(계기값)</option>
+    <option value="a" ${s.PopBasis==="a"?"selected":""}>절대(진공기준)</option></select>
+  </span></label>
+  ${atm?"":`<p class="hint" style="margin-top:-4px">현장 압력계가 가리키는 값이 <b>게이지</b>입니다(대기압일 때 0). 명세서에 <b>abs</b>·<b>절대</b>라고 적힌 값만 절대를 고르세요.</p>`}`;
 }
 /* 숫자칸은 포커스를 지키려고 패널을 다시 그리지 않는다. 그래서 압력·ΔP 해설은
    따로 떼어 두고 syncSide() 에서 그 상자만 갈아 끼운다. 안 그러면 값이 멈춰 보인다. */
@@ -1327,7 +1365,8 @@ function popHintHtml(s,m,r){
     : r.popOk
       ? `게이지 <b>${Math.round(r.Pg).toLocaleString()} Pa</b> / 절대 <b>${Math.round(r.Pabs).toLocaleString()} Pa</b>${(liq||flash)?` — 액주 상당 <b>${fx(r.Pg/((+m.rho)*G),2)} m</b>`:given?` — 목록표 표기용(계산에는 쓰이지 않음)`:""}`
       : `숫자를 입력하세요.`;
-  const warn = (r.ty.atm&&!r.isATM&&r.popOk)
+  /* 실제로 0 보다 큰 압력이 들어왔을 때만 경고한다 (빈칸·0 은 경고할 일이 아니다) */
+  const warn = (r.ty.atm&&!r.isATM&&r.popOk&&r.Pg>0)
     ? `<div class="warn"><b>${esc(s.srcType)}</b> 유형인데 운전압력이 상압이 아닙니다.
        ${liq?`이 압력은 Δ<i>P</i> 에 그대로 더해집니다. 실제로 가압된 설비라면 <b>가압탱크</b> 유형이 맞습니다.`
             :`제조사 데이터를 쓰는 유형이라 이 압력은 계산에 들어가지 않고 목록표에만 표기됩니다.`}</div>` : "";
@@ -1457,8 +1496,16 @@ function renderSrcPane(){
   </fieldset>`;
 
   h+=`<fieldset><legend>② 누출 조건</legend>
-   <label class="f"><span>누출원 유형</span><select data-path="src.srcType" data-live="1">
-    ${Object.keys(SRC_TYPES).map(k=>`<option value="${k}" ${k===s.srcType?"selected":""}>${k} — ${SRC_TYPES[k].desc.split(".")[0]}</option>`).join("")}</select></label>
+   <div class="row">
+    <label class="f"><span>취급물질의 상</span><select data-path="src.상" data-live="1">
+     ${Object.keys(PHASES).map(k=>`<option value="${k}" ${k===s.상?"selected":""}>${PHASES[k].label}</option>`).join("")}</select></label>
+    <label class="f"><span>누출원 유형</span><select data-path="src.srcType" data-live="1">
+     ${typesOf(s.상).map(k=>`<option value="${k}" ${k===s.srcType?"selected":""}>${k}</option>`).join("")}</select></label>
+   </div>
+   <p class="hint">${esc(PHASES[s.상].hint)}.</p>
+   <table class="doc tiny" style="margin-bottom:8px"><tr><th style="width:26%">누출원 유형</th><th>압력 적용방식</th></tr>
+    ${typesOf(s.상).map(k=>`<tr${k===s.srcType?' style="background:#fff5e6"':''}>
+      <td>${k===s.srcType?`<b>${k}</b>`:k}</td><td>${esc(SRC_TYPES[k].press)}</td></tr>`).join("")}</table>
    <p class="hint">${esc(TY.desc)}.<br><b>근거</b> : ${esc(TY.ref)}</p>`;
   if(orifice){
     h+=`<div class="row">${F("누출계수 Cd","src.Cd","number")}${F("누출구멍 단면적 S(㎟)","src.S","number")}</div>
@@ -1558,9 +1605,15 @@ document.addEventListener("input",e=>{
   setPath(p,v);
   /* 유형을 바꾸면 그 유형에 맞는 압력 기본값을 깔아 준다. 잠그는 게 아니라 되돌려 주는 것이라
      상압탱크로 바꾼 뒤에도 단위를 다시 골라 압력을 넣을 수 있다. */
-  if(p==="src.srcType"){
-    const s=S.srcs[S.selSrc], ty=SRC_TYPES[v];
-    if(s&&ty&&ty.atm){s.PopUnit="ATM";s.Pop=""}
+  if(p==="src.srcType"||p==="src.상"){
+    const s=S.srcs[S.selSrc];
+    if(s){
+      if(p==="src.상"){                       // 상을 바꾸면 그 상의 첫 유형으로 옮긴다
+        const list=typesOf(v);
+        if(list.indexOf(s.srcType)<0)s.srcType=list[0];
+      }
+      if(tyOf(s).atm){s.PopUnit="ATM";s.Pop=""}
+    }
   }
   if(el.tagName==="SELECT"||el.dataset.live){
     if(p.startsWith("doc."))renderDocPane(); else {renderSrcPane();renderMatPane()}
