@@ -343,6 +343,7 @@ function calcSrc(s,m){
 
   if(s.상태==="liquid"){
     r.dP = s.dPmode==="head" ? rho*G*(+s.h) : +s.dP;
+    r.hEq = r.dP/(rho*G);              // ΔP 를 직접 넣었을 때의 상당 액주높이
     r.W  = (+s.Cd)*S_m2*Math.sqrt(2*rho*r.dP);
     r.V  = r.W*(+s.t)/rho;
     if(s.poolMode==="tank"){ r.Ap=Math.PI*Math.pow(+s.D,2)/4; }
@@ -1074,8 +1075,12 @@ function liqCalc(s,m,r,cn){
   <div class="dl"><b><i>ρ</i></b> : 액체 밀도 (kg/m³)</div>
   <div class="dl"><b>Δ<i>P</i></b> : 개구부에서의 누설 압력 차 (Pa)</div>
   <div class="calc">
-  Δ<i>P</i> = <i>ρ</i> × <i>g</i> × <i>h</i> ${s.dPmode==="head"?`(<i>h</i> = ${s.h} m 로 가정함)`:"(직접 입력)"}<br>
-  ${s.dPmode==="head"?`&nbsp;&nbsp;&nbsp;= ${m.rho} kg/m³ × 9.8 m/sec² × ${s.h} m = ${fx(r.dP,2)} kg/(m·s²) ≈ ${Math.round(r.dP).toLocaleString()} Pa`:`&nbsp;&nbsp;&nbsp;= ${Math.round(r.dP).toLocaleString()} Pa`}<br>
+  ${s.dPmode==="head"
+    ? `Δ<i>P</i> = <i>ρ</i> × <i>g</i> × <i>h</i> (<i>h</i> = ${s.h} m 로 가정함)<br>
+  &nbsp;&nbsp;&nbsp;= ${m.rho} kg/m³ × 9.8 m/sec² × ${s.h} m = ${fx(r.dP,2)} kg/(m·s²) ≈ ${Math.round(r.dP).toLocaleString()} Pa`
+    /* ΔP 를 직접 적용한 경우에도 같은 식으로 적는다. h 는 그 압력에 상당하는 액주높이를 역산한 값 */
+    : `Δ<i>P</i> = ${Math.round(r.dP).toLocaleString()} Pa 를 적용함<br>
+  &nbsp;&nbsp;&nbsp;<i>h</i> = <span class="frac"><span>Δ<i>P</i></span><span class="den"><i>ρ</i> × <i>g</i></span></span> = ${Math.round(r.dP).toLocaleString()} / (${m.rho} kg/m³ × 9.8 m/sec²) = ${fx(r.hEq,2)} m &nbsp;(상당 액주높이)`}<br>
   ∴ <i>W</i> = ${s.Cd} × ${S6} × √(2 × ${m.rho} × ${Math.round(r.dP)}) = <span class="res">${num(r.W,4)} kg/s</span><br>
   &nbsp;&nbsp;<i>V</i><sub>누출</sub> = ${num(r.W,4)} × ${s.t} / ${m.rho} = <span class="res">${num(r.V,3)} m³</span><br>
   &nbsp;&nbsp;<i>A<sub>p</sub></i> = ${num(r.V,3)} / 0.01 = <span class="res">${num(r.Ap,4)} m²</span></div>`
