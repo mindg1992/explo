@@ -266,7 +266,10 @@ const R_GAS=8314, PA_ATM=101325, G=9.8;
      ΔP : 개구부에서의 누설 압력차(Pa) → 액체식 (식1) 에 들어가는 압력차
    따라서 같은 운전압력이라도 가스는 절대압, 액체는 게이지압으로 쓴다.
    "상압"은 게이지 0(= 절대 1atm)이라는 뜻이므로 액체 ΔP 는 액주 ρgh 만 남는다. */
-const P_UNITS={"ATM":null,"kPa":1e3,"MPa":1e6,"bar":1e5,"kgf/cm²":98066.5,"psi":6894.757};
+/* "상압"은 단위가 아니라 "가압하지 않음(게이지 0)"이라는 뜻이고, "atm"은 크기가 1기압인
+   실제 단위다. 둘을 같은 이름으로 두면 2 atm 같은 값을 넣을 방법이 없어져 따로 뒀다. */
+const P_UNITS={"상압":null,"kPa":1e3,"MPa":1e6,"bar":1e5,"atm":PA_ATM,"kgf/cm²":98066.5,"psi":6894.757};
+const P_UNIT_LABEL={"상압":"상압(가압 없음)"};
 
 /* 빈칸을 0 으로 보면 안 된다. +"" 는 0 이라, 단위만 고르고 숫자를 아직 안 넣은 상태가
    "0 bar 로 가압됨"으로 읽혀 엉뚱한 경고가 떴다. 빈칸은 미입력으로 돌려준다. */
@@ -275,7 +278,7 @@ function popNum(s){
   const v=+s.Pop; return isFinite(v)?v:NaN;
 }
 function popPa(s){
-  const u=s.PopUnit||"ATM", f=P_UNITS[u];
+  const u=s.PopUnit||"상압", f=P_UNITS[u];
   if(f==null)return {isATM:true,ok:true,Pg:0,Pabs:PA_ATM};       // 상압
   const v=popNum(s);
   if(!isFinite(v))return {isATM:false,ok:false,Pg:NaN,Pabs:NaN}; // 미입력
@@ -284,8 +287,8 @@ function popPa(s){
 }
 /* 목록표·계산서에 찍는 표기 (예: "0.5 MPa(g)") */
 function popLabel(s){
-  const u=s.PopUnit||"ATM";
-  if(P_UNITS[u]==null)return "ATM";
+  const u=s.PopUnit||"상압";
+  if(P_UNITS[u]==null)return "ATM";   // 목록표 표기는 관행대로 ATM
   const v=popNum(s);
   return isFinite(v)?`${trim(String(v))} ${u}(${s.PopBasis==="a"?"a":"g"})`:"-";
 }
@@ -383,7 +386,7 @@ function newSrc(n){
     누출형태:"무거운가스",
     희석모드:"auto",희석수동:"중희석",희석근거:"설비특성상",
     범위모드:"auto",범위수동:"",수평:"",수직:"",
-    Ta:25,Top:25,Pop:"",PopUnit:"ATM",PopBasis:"g",비고:""};
+    Ta:25,Top:25,Pop:"",PopUnit:"상압",PopBasis:"g",비고:""};
 }
 /* 예전에 저장한 파일은 운전압력이 "ATM" 같은 표기용 문자열이었고,
    가스 압력만 P_MPa(절대) 로 따로 들고 있었다. 숫자+단위 구조로 옮긴다. */
@@ -395,12 +398,16 @@ function fillSrcDefaults(s){
     const lg=String(s.운전압력==null?"":s.운전압력).trim(), n=lg.match(/-?[\d.]+/);
     if(s.상태!=="liquid"&&isFinite(+s.P_MPa)&&+s.P_MPa>0){
       s.Pop=+s.P_MPa;s.PopUnit="MPa";s.PopBasis="a";            // 옛 "P(MPa abs)"
-    }else if(n&&/kpa|mpa|bar|psi|kgf/i.test(lg)){
+    }else if(n&&/kpa|mpa|bar|psi|kgf|atm/i.test(lg)){
+      /* 숫자가 붙어 있어야 단위로 본다. 숫자 없는 "ATM" 은 상압 표기이므로 여기 안 걸린다. */
       s.Pop=+n[0];
-      s.PopUnit=/mpa/i.test(lg)?"MPa":/kpa/i.test(lg)?"kPa":/bar/i.test(lg)?"bar":/psi/i.test(lg)?"psi":"kgf/cm²";
+      s.PopUnit=/mpa/i.test(lg)?"MPa":/kpa/i.test(lg)?"kPa":/bar/i.test(lg)?"bar"
+               :/psi/i.test(lg)?"psi":/kgf/i.test(lg)?"kgf/cm²":"atm";
       s.PopBasis=/abs|절대|\(a\)/i.test(lg)?"a":"g";
-    }else{s.Pop="";s.PopUnit="ATM";s.PopBasis="g";}
+    }else{s.Pop="";s.PopUnit="상압";s.PopBasis="g";}
   }
+  /* 앞선 버전이 상압을 "ATM" 이라는 이름으로 저장했다. 이제 "atm" 은 실제 단위라 이름을 가른다. */
+  if(s.PopUnit==="ATM"){s.PopUnit="상압";s.Pop=""}
   if(s.PopBasis==null)s.PopBasis="g";
   if(s.Pop==null)s.Pop="";
   /* 유형 선택이 없던 파일 : 상·압력·풀 산정방식으로 가장 가까운 유형을 고른다.
@@ -1313,12 +1320,13 @@ function gasCalc(s,m,r,cn){
   const S6=trim((+s.S/1e6).toFixed(9));
   return `<p class="item">${cn} 가스 누출률(<i>W<sub>g</sub></i>) = <span class="orange">${num(r.Wg,3)} kg/s</span></p>
   <p class="ind">⑴ 용기 내부압력(절대압) 환산</p>
-  <p class="ind2" style="color:#1546a0;font-size:9.5pt">* 지침 기호표 : <i>P</i> 는 "용기의 내부압력"이므로 <b>절대압</b>을 적용한다.</p>
+  <p class="ind2" style="color:#1546a0;font-size:9.5pt">* 지침 기호표 : <i>P</i> 는 "용기의 내부압력"이므로 <b>절대압</b>을 적용한다.
+   절대압은 게이지압에 대기압을 더한 값이다 — <b>절대 = 게이지 + 101,325 Pa</b>.</p>
   <div class="calc"><i>P</i> = ${r.isATM
     ? `대기압(상압) = <span class="res">101,325 Pa(abs)</span>`
     : (s.PopBasis==="a"
-      ? `${esc(popLabel(s))} = <span class="res">${Math.round(r.Pabs).toLocaleString()} Pa(abs)</span>`
-      : `${esc(popLabel(s))} + 101,325 Pa = <span class="res">${Math.round(r.Pabs).toLocaleString()} Pa(abs)</span>`)}</div>
+      ? `${esc(popLabel(s))} — 이미 절대압으로 입력됨 = <span class="res">${Math.round(r.Pabs).toLocaleString()} Pa(abs)</span>`
+      : `${esc(popLabel(s))} = ${Math.round(r.Pg).toLocaleString()} Pa(gauge) + 101,325 Pa = <span class="res">${Math.round(r.Pabs).toLocaleString()} Pa(abs)</span>`)}</div>
   <p class="ind">⑵ 임계압력 판정</p>${EQ.pc}
   <div class="calc"><i>P<sub>C</sub></i> = 101,325 × [(${m.gamma}+1)/2]<sup>${m.gamma}/(${m.gamma}−1)</sup> = <span class="res">${Math.round(r.Pc).toLocaleString()} Pa</span><br>
   용기 내부압력 <i>P</i> = ${Math.round(r.P).toLocaleString()} Pa ${r.choked?"≥":"&lt;"} <i>P<sub>C</sub></i> → <span class="res">${r.choked?"음속누설(Chocked)":"아음속누설(Non chocked)"}</span></div>
@@ -1341,19 +1349,20 @@ function F(label,path,type,attrs){
 function popField(s){
   /* 유형은 기본값만 정해 줄 뿐 잠그지 않는다. 상압탱크로 두고도 압력을 넣을 수 있어야 한다.
      숫자·기준칸만 "상압" 단위일 때 비활성인데, 이는 상압에 넣을 숫자가 없기 때문이다. */
-  const u=s.PopUnit||"ATM", atm=P_UNITS[u]==null;
+  const u=s.PopUnit||"상압", atm=P_UNITS[u]==null;
   /* 세 컨트롤을 그리드로 나눈다. label.f>span 의 display:block 을 이겨야 하므로 인라인으로 준다. */
   return `<label class="f"><span>운전압력</span><span style="display:grid;grid-template-columns:1.1fr 1fr 0.9fr;gap:4px">
    <input type="number" step="any" data-path="src.Pop" style="min-width:0"
     value="${atm?"":(s.Pop==null?"":String(s.Pop).replace(/"/g,"&quot;"))}" ${atm?"disabled":""}
     placeholder="${atm?"상압":"예) 0.5"}">
    <select data-path="src.PopUnit" data-live="1" style="min-width:0">
-    ${Object.keys(P_UNITS).map(k=>`<option value="${k}" ${k===u?"selected":""}>${k==="ATM"?"상압(ATM)":k}</option>`).join("")}</select>
+    ${Object.keys(P_UNITS).map(k=>`<option value="${k}" ${k===u?"selected":""}>${P_UNIT_LABEL[k]||k}</option>`).join("")}</select>
    <select data-path="src.PopBasis" data-live="1" style="min-width:0" ${atm?"disabled":""}>
     <option value="g" ${s.PopBasis!=="a"?"selected":""}>게이지(계기값)</option>
     <option value="a" ${s.PopBasis==="a"?"selected":""}>절대(진공기준)</option></select>
   </span></label>
-  ${atm?"":`<p class="hint" style="margin-top:-4px">현장 압력계가 가리키는 값이 <b>게이지</b>입니다(대기압일 때 0). 명세서에 <b>abs</b>·<b>절대</b>라고 적힌 값만 절대를 고르세요.</p>`}`;
+  ${atm?"":`<p class="hint" style="margin-top:-4px"><b>절대 = 게이지 + 대기압(101,325 Pa)</b>.
+   현장 압력계가 가리키는 값이 <b>게이지</b>입니다(대기 중에서 0). 명세서에 <b>abs</b>·<b>절대</b>라고 적힌 값만 절대를 고르세요.</p>`}`;
 }
 /* 숫자칸은 포커스를 지키려고 패널을 다시 그리지 않는다. 그래서 압력·ΔP 해설은
    따로 떼어 두고 syncSide() 에서 그 상자만 갈아 끼운다. 안 그러면 값이 멈춰 보인다. */
@@ -1363,7 +1372,8 @@ function popHintHtml(s,m,r){
     ? `상압(게이지 0)입니다. ${given?"누출률은 제조사 데이터를 쓰므로 이 값은 목록표 표기에만 씁니다."
        :(liq||flash)?"액체 Δ<i>P</i> 는 액주 <i>ρgh</i> 만으로 산정됩니다.":"가스는 구동 압력차가 없어 <b>W<sub>g</sub> = 0</b> 입니다."}`
     : r.popOk
-      ? `게이지 <b>${Math.round(r.Pg).toLocaleString()} Pa</b> / 절대 <b>${Math.round(r.Pabs).toLocaleString()} Pa</b>${(liq||flash)?` — 액주 상당 <b>${fx(r.Pg/((+m.rho)*G),2)} m</b>`:given?` — 목록표 표기용(계산에는 쓰이지 않음)`:""}`
+      /* 두 값을 나란히만 두면 관계가 안 보인다. 더하기를 그대로 보여 준다. */
+      ? `게이지 <b>${Math.round(r.Pg).toLocaleString()}</b> + 대기압 101,325 = 절대 <b>${Math.round(r.Pabs).toLocaleString()} Pa</b>${(liq||flash)?` — 액주 상당 <b>${fx(r.Pg/((+m.rho)*G),2)} m</b>`:given?` — 목록표 표기용(계산에는 쓰이지 않음)`:""}`
       : `숫자를 입력하세요.`;
   /* 실제로 0 보다 큰 압력이 들어왔을 때만 경고한다 (빈칸·0 은 경고할 일이 아니다) */
   const warn = (r.ty.atm&&!r.isATM&&r.popOk&&r.Pg>0)
@@ -1612,7 +1622,7 @@ document.addEventListener("input",e=>{
         const list=typesOf(v);
         if(list.indexOf(s.srcType)<0)s.srcType=list[0];
       }
-      if(tyOf(s).atm){s.PopUnit="ATM";s.Pop=""}
+      if(tyOf(s).atm){s.PopUnit="상압";s.Pop=""}
     }
   }
   if(el.tagName==="SELECT"||el.dataset.live){
