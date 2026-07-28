@@ -433,7 +433,7 @@ function calcSrc(s,m){
   r.phase=s.상태;
   /* 탱크 액표면 풀은 상압탱크(대기 개방 액면)에서만 뜻이 있다 */
   if(TY.pool==="spill")s.poolMode="spill";
-  const P0=popPa(TY.atm?{PopUnit:"ATM"}:s);      // 상압 고정 유형은 입력값을 무시한다
+  const P0=popPa(s);
   r.isATM=P0.isATM; r.popOk=P0.ok; r.Pg=P0.Pg; r.Pabs=P0.Pabs;
   r.rho_g = PA_ATM*M/(R_GAS*Ta);
 
@@ -1302,19 +1302,47 @@ function F(label,path,type,attrs){
 }
 /* 운전압력 : 숫자 + 단위 + 게이지/절대. 단위에서 "상압"을 고르면 숫자칸은 잠긴다. */
 function popField(s){
-  const fixed=tyOf(s).atm;                       // 유형 자체가 상압 고정이면 단위 선택도 잠근다
-  const u=fixed?"ATM":(s.PopUnit||"ATM"), atm=P_UNITS[u]==null;
+  /* 유형은 기본값만 정해 줄 뿐 잠그지 않는다. 상압탱크로 두고도 압력을 넣을 수 있어야 한다.
+     숫자·기준칸만 "상압" 단위일 때 비활성인데, 이는 상압에 넣을 숫자가 없기 때문이다. */
+  const u=s.PopUnit||"ATM", atm=P_UNITS[u]==null;
   /* 세 컨트롤을 그리드로 나눈다. label.f>span 의 display:block 을 이겨야 하므로 인라인으로 준다. */
   return `<label class="f"><span>운전압력</span><span style="display:grid;grid-template-columns:1.1fr 1fr 0.9fr;gap:4px">
    <input type="number" step="any" data-path="src.Pop" style="min-width:0"
     value="${atm?"":(s.Pop==null?"":String(s.Pop).replace(/"/g,"&quot;"))}" ${atm?"disabled":""}
     placeholder="${atm?"상압":"예) 0.5"}">
-   <select data-path="src.PopUnit" data-live="1" style="min-width:0" ${fixed?"disabled":""}>
+   <select data-path="src.PopUnit" data-live="1" style="min-width:0">
     ${Object.keys(P_UNITS).map(k=>`<option value="${k}" ${k===u?"selected":""}>${k==="ATM"?"상압(ATM)":k}</option>`).join("")}</select>
    <select data-path="src.PopBasis" data-live="1" style="min-width:0" ${atm?"disabled":""}>
     <option value="g" ${s.PopBasis!=="a"?"selected":""}>게이지</option>
     <option value="a" ${s.PopBasis==="a"?"selected":""}>절대</option></select>
   </span></label>`;
+}
+/* 숫자칸은 포커스를 지키려고 패널을 다시 그리지 않는다. 그래서 압력·ΔP 해설은
+   따로 떼어 두고 syncSide() 에서 그 상자만 갈아 끼운다. 안 그러면 값이 멈춰 보인다. */
+function popHintHtml(s,m,r){
+  const liq=r.mode==="liquid", flash=r.mode==="flash", given=r.mode==="given";
+  const hint = r.isATM
+    ? `상압(게이지 0)입니다. ${given?"누출률은 제조사 데이터를 쓰므로 이 값은 목록표 표기에만 씁니다."
+       :(liq||flash)?"액체 Δ<i>P</i> 는 액주 <i>ρgh</i> 만으로 산정됩니다.":"가스는 구동 압력차가 없어 <b>W<sub>g</sub> = 0</b> 입니다."}`
+    : r.popOk
+      ? `게이지 <b>${Math.round(r.Pg).toLocaleString()} Pa</b> / 절대 <b>${Math.round(r.Pabs).toLocaleString()} Pa</b>${(liq||flash)?` — 액주 상당 <b>${fx(r.Pg/((+m.rho)*G),2)} m</b>`:given?` — 목록표 표기용(계산에는 쓰이지 않음)`:""}`
+      : `숫자를 입력하세요.`;
+  const warn = (r.ty.atm&&!r.isATM&&r.popOk)
+    ? `<div class="warn"><b>${esc(s.srcType)}</b> 유형인데 운전압력이 상압이 아닙니다.
+       ${liq?`이 압력은 Δ<i>P</i> 에 그대로 더해집니다. 실제로 가압된 설비라면 <b>가압탱크</b> 유형이 맞습니다.`
+            :`제조사 데이터를 쓰는 유형이라 이 압력은 계산에 들어가지 않고 목록표에만 표기됩니다.`}</div>` : "";
+  return `<p class="hint">${hint}</p>${warn}`;
+}
+/* 액체·액화가스의 ΔP 해설 (누출 조건 칸) */
+function dpHintHtml(s,r){
+  const head = s.dPmode!=="head"
+    ? `ΔP = ${num(r.dP,5)} Pa <em>(직접입력)</em>`
+    : r.isATM
+      ? `ΔP = ρ·g·h = ${num(r.dP,5)} Pa <em>(운전압력 상압)</em>`
+      : `ΔP = P<sub>g</sub> + ρ·g·h = ${Math.round(r.Pg).toLocaleString()} + ${Math.round(r.dPhead).toLocaleString()} = <b>${Math.round(r.dP).toLocaleString()} Pa</b>`;
+  const dom = (!r.isATM&&s.dPmode==="head"&&r.popOk&&r.dPhead>0&&r.Pg>0)
+    ? `<p class="hint">운전압력이 지배항입니다. 액주만 썼을 때 대비 W 가 <b>${fx(Math.sqrt(r.dP/r.dPhead),2)}배</b>, 범위가 <b>${fx(Math.pow(r.dP/r.dPhead,0.5*0.4976),2)}배</b>입니다.</p>` : "";
+  return `<p class="hint">${head}</p>${dom}`;
 }
 function Sel(label,path,opts){
   const v=getPath(path);
@@ -1419,13 +1447,7 @@ function renderSrcPane(){
    <label class="f"><span>취급물질</span><select data-act="setmat">${S.mats.map(x=>`<option value="${x.id}" ${x.id===s.matId?"selected":""}>${esc(x.명칭)}</option>`).join("")}</select></label>
    <div class="row">${F("주위온도 Ta(℃)","src.Ta","number")}${F("운전온도 T(℃)","src.Top","number")}</div>
    ${popField(s)}
-   <p class="hint">${TY.atm
-     ? `<b>${esc(s.srcType)}</b> 유형은 상압 고정입니다. ${liq?"Δ<i>P</i> 는 액주 <i>ρgh</i> 만으로 산정됩니다.":"누출률은 제조사 데이터를 그대로 씁니다."}`
-     : r.isATM
-     ? `상압(게이지 0)입니다. ${(liq||flash)?"액체 Δ<i>P</i> 는 액주 <i>ρgh</i> 만으로 산정됩니다.":"가스는 구동 압력차가 없어 <b>W<sub>g</sub> = 0</b> 입니다."}`
-     : (r.popOk
-       ? `게이지 <b>${Math.round(r.Pg).toLocaleString()} Pa</b> / 절대 <b>${Math.round(r.Pabs).toLocaleString()} Pa</b>${(liq||flash)?` — 액주 상당 <b>${fx(r.Pg/((+m.rho)*G),2)} m</b>` : ""}`
-       : `숫자를 입력하세요.`)}</p>
+   <div id="popHintBox">${popHintHtml(s,m,r)}</div>
    ${F("비고","src.비고")}
   </fieldset>`;
 
@@ -1458,7 +1480,7 @@ function renderSrcPane(){
       ${F("플래시 증발분율 F<sub>v</sub> (%)","src.Fv","number",'placeholder="예) 2"')}</div>
     ${s.dPmode==="head"?F("액주높이 h(m) <em>(보통 0)</em>","src.h","number",'placeholder="예) 0"'):F("ΔP (Pa)","src.dP","number")}
     ${F("F<sub>v</sub> 산정근거","src.Fv근거","text",'placeholder="예) 누출 지점에서 증기화된 액체비율을 고려하여 결정(W의 2%)"')}
-    <p class="hint">ΔP = ${Math.round(r.dP||0).toLocaleString()} Pa → W = <b>${num(r.W,4)} kg/s</b> → W<sub>g</sub> = W × F<sub>v</sub> = <b>${num(r.Wg,3)} kg/s</b></p>
+    <div id="dpHintBox"><p class="hint">ΔP = ${Math.round(r.dP||0).toLocaleString()} Pa → W = <b>${num(r.W,4)} kg/s</b> → W<sub>g</sub> = W × F<sub>v</sub> = <b>${num(r.Wg,3)} kg/s</b></p></div>
     <div class="warn">지침 6.3.3 은 액화가스의 플래시 분율을 계산하는 식을 주지 않습니다. F<sub>v</sub> 는 물질의 열역학 데이터로 별도 산정하거나
      (근사식 F<sub>v</sub> ≈ C<sub>p</sub>(T<sub>저장</sub>−T<sub>비점</sub>)/H<sub>vap</sub>), 지침 예제처럼 근거를 명시해 가정해야 합니다.
      에어로졸·저온풀이 함께 생기는 경우는 이 모델의 범위 밖이므로 별도 검토가 필요합니다.</div>`;
@@ -1480,13 +1502,7 @@ function renderSrcPane(){
       <div class="row">${F("누출시간 t(초)","src.t","number",'placeholder="예) 1800"')}
       <label class="f"><span>ΔP 산정</span><select data-path="src.dPmode" data-live="1"><option value="head" ${s.dPmode==="head"?"selected":""}>운전압력${TY.head===true?" + 액주높이 h":""}</option><option value="given" ${s.dPmode!=="head"?"selected":""}>직접입력</option></select></label></div>
       ${s.dPmode==="head"?F(TY.head===true?"액주높이 h(m) <em>(누출점 위 액면높이)</em>":"액주높이 h(m) <em>(토출압이 지배 — 보통 0)</em>","src.h","number",TY.head===true?'placeholder="예) 2"':'placeholder="예) 0"'):F("ΔP (Pa)","src.dP","number")}
-      <p class="hint">${s.dPmode!=="head"
-        ? `ΔP = ${num(r.dP,5)} Pa <em>(직접입력)</em>`
-        : (r.isATM
-          ? `ΔP = ρ·g·h = ${num(r.dP,5)} Pa <em>(운전압력 상압)</em>`
-          : `ΔP = P<sub>g</sub> + ρ·g·h = ${Math.round(r.Pg).toLocaleString()} + ${Math.round(r.dPhead).toLocaleString()} = <b>${Math.round(r.dP).toLocaleString()} Pa</b>`)}</p>
-      ${(!r.isATM&&s.dPmode==="head"&&r.popOk&&r.dPhead>0&&r.Pg>0)
-        ? `<p class="hint">운전압력이 지배항입니다. 액주만 썼을 때 대비 W 가 <b>${fx(Math.sqrt(r.dP/r.dPhead),2)}배</b>, 범위가 <b>${fx(Math.pow(r.dP/r.dPhead,0.5*0.4976),2)}배</b>입니다.</p>` : ""}
+      <div id="dpHintBox">${dpHintHtml(s,r)}</div>
       <details><summary style="cursor:pointer;font-size:11.5px;color:var(--blue);font-weight:600;margin:6px 0">누출시간 선정 참고 — 검출·차단 시스템 등급별 누출시간</summary>
         <p class="hint" style="margin-top:4px">&lt;표 1&gt; 검출 및 차단시스템의 등급결정 기준</p>
         ${tblDet()}
@@ -1540,6 +1556,12 @@ document.addEventListener("input",e=>{
   if(el.type==="number")v=v===""?"":parseFloat(v);
   if(el.dataset.type==="bool")v=(v==="true");
   setPath(p,v);
+  /* 유형을 바꾸면 그 유형에 맞는 압력 기본값을 깔아 준다. 잠그는 게 아니라 되돌려 주는 것이라
+     상압탱크로 바꾼 뒤에도 단위를 다시 골라 압력을 넣을 수 있다. */
+  if(p==="src.srcType"){
+    const s=S.srcs[S.selSrc], ty=SRC_TYPES[v];
+    if(s&&ty&&ty.atm){s.PopUnit="ATM";s.Pop=""}
+  }
   if(el.tagName==="SELECT"||el.dataset.live){
     if(p.startsWith("doc."))renderDocPane(); else {renderSrcPane();renderMatPane()}
   }
@@ -1550,6 +1572,14 @@ document.addEventListener("input",e=>{
 function syncSide(){
   const s=S.srcs[S.selSrc];if(!s)return;
   const m=matOf(s),r=calcSrc(s,m);
+  /* 숫자칸 입력으로는 패널을 다시 그리지 않으므로 해설 상자를 여기서 직접 갱신한다 */
+  const ph=$("#popHintBox"); if(ph)ph.innerHTML=popHintHtml(s,m,r);
+  const dh=$("#dpHintBox");
+  if(dh){
+    dh.innerHTML = r.mode==="flash"
+      ? `<p class="hint">ΔP = ${Math.round(r.dP||0).toLocaleString()} Pa → W = <b>${num(r.W,4)} kg/s</b> → W<sub>g</sub> = W × F<sub>v</sub> = <b>${num(r.Wg,3)} kg/s</b></p>`
+      : dpHintHtml(s,r);
+  }
   const box=$("#pane-src .readout");
   if(box){const tmp=document.createElement("div");
     tmp.innerHTML=`<div class="readout">${box.innerHTML}</div>`;}
