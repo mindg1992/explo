@@ -268,7 +268,10 @@ const R_GAS=8314, PA_ATM=101325, G=9.8;
    "상압"은 게이지 0(= 절대 1atm)이라는 뜻이므로 액체 ΔP 는 액주 ρgh 만 남는다. */
 /* "상압"은 단위가 아니라 "가압하지 않음(게이지 0)"이라는 뜻이고, "atm"은 크기가 1기압인
    실제 단위다. 둘을 같은 이름으로 두면 2 atm 같은 값을 넣을 방법이 없어져 따로 뒀다. */
-const P_UNITS={"상압":null,"kPa":1e3,"MPa":1e6,"bar":1e5,"atm":PA_ATM,"kgf/cm²":98066.5,"psi":6894.757};
+/* mmH2O·mmHg 는 표준중력(9.80665)으로 정의된 단위라 계산용 G(9.8)와 무관하게 정의값을 쓴다.
+   브리더밸브·통기구 설정압이 보통 이 단위로 적혀 있어 넣어 둔다. */
+const P_UNITS={"상압":null,"mmH2O":9.80665,"mmHg":133.322387415,
+  "kPa":1e3,"MPa":1e6,"bar":1e5,"atm":PA_ATM,"kgf/cm²":98066.5,"psi":6894.757};
 const P_UNIT_LABEL={"상압":"상압(가압 없음)"};
 
 /* 빈칸을 0 으로 보면 안 된다. +"" 는 0 이라, 단위만 고르고 숫자를 아직 안 넣은 상태가
@@ -398,10 +401,11 @@ function fillSrcDefaults(s){
     const lg=String(s.운전압력==null?"":s.운전압력).trim(), n=lg.match(/-?[\d.]+/);
     if(s.상태!=="liquid"&&isFinite(+s.P_MPa)&&+s.P_MPa>0){
       s.Pop=+s.P_MPa;s.PopUnit="MPa";s.PopBasis="a";            // 옛 "P(MPa abs)"
-    }else if(n&&/kpa|mpa|bar|psi|kgf|atm/i.test(lg)){
+    }else if(n&&/kpa|mpa|bar|psi|kgf|atm|mmhg|mmh2o|mmaq/i.test(lg)){
       /* 숫자가 붙어 있어야 단위로 본다. 숫자 없는 "ATM" 은 상압 표기이므로 여기 안 걸린다. */
       s.Pop=+n[0];
-      s.PopUnit=/mpa/i.test(lg)?"MPa":/kpa/i.test(lg)?"kPa":/bar/i.test(lg)?"bar"
+      s.PopUnit=/mmhg/i.test(lg)?"mmHg":/mmh2o|mmaq/i.test(lg)?"mmH2O"
+               :/mpa/i.test(lg)?"MPa":/kpa/i.test(lg)?"kPa":/bar/i.test(lg)?"bar"
                :/psi/i.test(lg)?"psi":/kgf/i.test(lg)?"kgf/cm²":"atm";
       s.PopBasis=/abs|절대|\(a\)/i.test(lg)?"a":"g";
     }else{s.Pop="";s.PopUnit="상압";s.PopBasis="g";}
@@ -1394,9 +1398,7 @@ function dpHintHtml(s,r){
     : r.isATM
       ? `ΔP = ρ·g·h = ${num(r.dP,5)} Pa <em>(운전압력 상압)</em>`
       : `ΔP = P<sub>게이지</sub> + ρ·g·h = ${Math.round(r.Pg).toLocaleString()} + ${Math.round(r.dPhead).toLocaleString()} = <b>${Math.round(r.dP).toLocaleString()} Pa</b>`;
-  const dom = (!r.isATM&&s.dPmode==="head"&&r.popOk&&r.dPhead>0&&r.Pg>0)
-    ? `<p class="hint">운전압력이 지배항입니다. 액주만 썼을 때 대비 W 가 <b>${fx(Math.sqrt(r.dP/r.dPhead),2)}배</b>, 범위가 <b>${fx(Math.pow(r.dP/r.dPhead,0.5*0.4976),2)}배</b>입니다.</p>` : "";
-  return `<p class="hint">${head}</p>${dom}`;
+  return `<p class="hint">${head}</p>`;
 }
 function Sel(label,path,opts){
   const v=getPath(path);
