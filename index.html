@@ -288,12 +288,12 @@ function popPa(s){
   const Pabs=(s.PopBasis==="a")?v*f:v*f+PA_ATM;
   return {isATM:false,ok:true,Pg:Pabs-PA_ATM,Pabs:Pabs};
 }
-/* 목록표·계산서에 찍는 표기 (예: "0.5 MPa(g)") */
+/* 목록표·계산서에 찍는 표기 (예: "0.5 MPa") */
 function popLabel(s){
   const u=s.PopUnit||"상압";
   if(P_UNITS[u]==null)return "ATM";   // 목록표 표기는 관행대로 ATM
   const v=popNum(s);
-  return isFinite(v)?`${trim(String(v))} ${u}(${s.PopBasis==="a"?"a":"g"})`:"-";
+  return isFinite(v)?`${trim(String(v))} ${u}`:"-";
 }
 
 /* ===================== 취급물질의 상(相) =====================
