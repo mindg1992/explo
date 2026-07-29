@@ -1232,6 +1232,12 @@ function srcPages(s,idx){
      위험성을 고려하여 장치로부터 ${m1(r.수평)} m 를 ${r.zone} 장소로 구분함.</div></div>`,K("f"));
 }
 /* ΔP 산정 과정 — 액체 오리피스식을 쓰는 유형(액체·액화가스)이 함께 쓴다 */
+/* 입력한 운전압력을 게이지압으로 바꾸는 한 줄. 절대로 넣었으면 대기압을 빼는 과정을 보인다. */
+function pgLine(s,r){
+  return s.PopBasis==="a"
+    ? `${esc(popLabel(s))} = ${Math.round(r.Pabs).toLocaleString()} Pa(절대) − 대기압 101,325 Pa = ${Math.round(r.Pg).toLocaleString()} Pa`
+    : `${esc(popLabel(s))} = ${Math.round(r.Pg).toLocaleString()} Pa <span style="font-size:8.5pt">(게이지로 입력했으므로 그대로 쓴다)</span>`;
+}
 function dpLines(s,m,r){
   if(s.dPmode!=="head")
     /* ΔP 를 직접 적용한 경우. h 는 그 압력에 상당하는 액주높이를 역산한 값 */
@@ -1243,16 +1249,15 @@ function dpLines(s,m,r){
   &nbsp;&nbsp;&nbsp;= ${m.rho} kg/m³ × 9.8 m/sec² × ${s.h} m = ${fx(r.dP,2)} kg/(m·s²) ≈ ${Math.round(r.dP).toLocaleString()} Pa`;
   if(!r.ty.head||!(r.dPhead>0))
     /* 펌프 토출처럼 액주를 세지 않는 경우 — 게이지 운전압력이 곧 ΔP */
-    return `Δ<i>P</i> = <i>P</i><sub>g</sub> = ${esc(popLabel(s))}${s.PopBasis==="a"?` − 101,325 Pa`:``} = ${Math.round(r.dP).toLocaleString()} Pa
-  &nbsp;<span style="font-size:8.5pt">(${esc(r.ty.desc)}. 액주 상당높이 ${fx(r.hEq,2)} m)</span>`;
+    return `Δ<i>P</i> = <i>P</i><sub>g</sub> <span style="font-size:8.5pt">(게이지 운전압력)</span><br>
+  &nbsp;&nbsp;&nbsp;= ${pgLine(s,r)}
+  &nbsp;<span style="font-size:8.5pt">(${esc(r.ty.desc)})</span>`;
   /* 가압 — 게이지 운전압력이 액주에 더해진다 */
-  return `Δ<i>P</i> = <i>P</i><sub>g</sub> + <i>ρ</i> × <i>g</i> × <i>h</i> &nbsp;(운전압력 ${esc(popLabel(s))}, <i>h</i> = ${(+s.h||0)} m)<br>
-  &nbsp;&nbsp;&nbsp;<i>P</i><sub>g</sub> = ${s.PopBasis==="a"
-      ? `${Math.round(r.Pabs).toLocaleString()} Pa(abs) − 101,325 Pa`
-      : `${Math.round(r.Pg).toLocaleString()} Pa(gauge)`} = ${Math.round(r.Pg).toLocaleString()} Pa<br>
+  return `Δ<i>P</i> = <i>P</i><sub>g</sub> + <i>ρ</i> × <i>g</i> × <i>h</i> &nbsp;<span style="font-size:8.5pt">(<i>P</i><sub>g</sub> = 게이지 운전압력, <i>h</i> = ${(+s.h||0)} m)</span><br>
+  &nbsp;&nbsp;&nbsp;<i>P</i><sub>g</sub> = ${pgLine(s,r)}<br>
   &nbsp;&nbsp;&nbsp;<i>ρgh</i> = ${m.rho} kg/m³ × 9.8 m/sec² × ${(+s.h||0)} m = ${Math.round(r.dPhead).toLocaleString()} Pa<br>
   &nbsp;&nbsp;&nbsp;∴ Δ<i>P</i> = ${Math.round(r.Pg).toLocaleString()} + ${Math.round(r.dPhead).toLocaleString()} = ${Math.round(r.dP).toLocaleString()} Pa
-  &nbsp;<span style="font-size:8.5pt">(액주 상당높이 ${fx(r.hEq,2)} m)</span>`;
+`;
 }
 
 /* 가압 액화가스 — 액체 오리피스로 W 를 구한 뒤 플래시분율만 증기가 된다.
@@ -1373,7 +1378,7 @@ function popHintHtml(s,m,r){
        :(liq||flash)?"액체 Δ<i>P</i> 는 액주 <i>ρgh</i> 만으로 산정됩니다.":"가스는 구동 압력차가 없어 <b>W<sub>g</sub> = 0</b> 입니다."}`
     : r.popOk
       /* 두 값을 나란히만 두면 관계가 안 보인다. 더하기를 그대로 보여 준다. */
-      ? `게이지 <b>${Math.round(r.Pg).toLocaleString()}</b> + 대기압 101,325 = 절대 <b>${Math.round(r.Pabs).toLocaleString()} Pa</b>${(liq||flash)?` — 액주 상당 <b>${fx(r.Pg/((+m.rho)*G),2)} m</b>`:given?` — 목록표 표기용(계산에는 쓰이지 않음)`:""}`
+      ? `게이지 <b>${Math.round(r.Pg).toLocaleString()}</b> + 대기압 101,325 = 절대 <b>${Math.round(r.Pabs).toLocaleString()} Pa</b>${given?` — 목록표 표기용(계산에는 쓰이지 않음)`:""}`
       : `숫자를 입력하세요.`;
   /* 실제로 0 보다 큰 압력이 들어왔을 때만 경고한다 (빈칸·0 은 경고할 일이 아니다) */
   const warn = (r.ty.atm&&!r.isATM&&r.popOk&&r.Pg>0)
@@ -1388,7 +1393,7 @@ function dpHintHtml(s,r){
     ? `ΔP = ${num(r.dP,5)} Pa <em>(직접입력)</em>`
     : r.isATM
       ? `ΔP = ρ·g·h = ${num(r.dP,5)} Pa <em>(운전압력 상압)</em>`
-      : `ΔP = P<sub>g</sub> + ρ·g·h = ${Math.round(r.Pg).toLocaleString()} + ${Math.round(r.dPhead).toLocaleString()} = <b>${Math.round(r.dP).toLocaleString()} Pa</b>`;
+      : `ΔP = P<sub>게이지</sub> + ρ·g·h = ${Math.round(r.Pg).toLocaleString()} + ${Math.round(r.dPhead).toLocaleString()} = <b>${Math.round(r.dP).toLocaleString()} Pa</b>`;
   const dom = (!r.isATM&&s.dPmode==="head"&&r.popOk&&r.dPhead>0&&r.Pg>0)
     ? `<p class="hint">운전압력이 지배항입니다. 액주만 썼을 때 대비 W 가 <b>${fx(Math.sqrt(r.dP/r.dPhead),2)}배</b>, 범위가 <b>${fx(Math.pow(r.dP/r.dPhead,0.5*0.4976),2)}배</b>입니다.</p>` : "";
   return `<p class="hint">${head}</p>${dom}`;
@@ -1533,7 +1538,7 @@ function renderSrcPane(){
   }
   if(flash){
     h+=`<div class="row">
-      <label class="f"><span>ΔP 산정</span><select data-path="src.dPmode" data-live="1"><option value="head" ${s.dPmode==="head"?"selected":""}>운전압력${TY.head===true?" + 액주높이 h":""}</option><option value="given" ${s.dPmode!=="head"?"selected":""}>직접입력</option></select></label>
+      <label class="f"><span>ΔP 산정</span><select data-path="src.dPmode" data-live="1"><option value="head" ${s.dPmode==="head"?"selected":""}>게이지 운전압력${TY.head===true?" + 액주높이 h":""}</option><option value="given" ${s.dPmode!=="head"?"selected":""}>직접입력</option></select></label>
       ${F("플래시 증발분율 F<sub>v</sub> (%)","src.Fv","number",'placeholder="예) 2"')}</div>
     ${s.dPmode==="head"?F("액주높이 h(m) <em>(보통 0)</em>","src.h","number",'placeholder="예) 0"'):F("ΔP (Pa)","src.dP","number")}
     ${F("F<sub>v</sub> 산정근거","src.Fv근거","text",'placeholder="예) 누출 지점에서 증기화된 액체비율을 고려하여 결정(W의 2%)"')}
@@ -1557,7 +1562,7 @@ function renderSrcPane(){
           ${T_PRESET.map(o=>`<option value="${o[1]}" ${+s.t===o[1]?"selected":""}>${o[0]} (${o[1]}초)</option>`).join("")}
         </select></label>
       <div class="row">${F("누출시간 t(초)","src.t","number",'placeholder="예) 1800"')}
-      <label class="f"><span>ΔP 산정</span><select data-path="src.dPmode" data-live="1"><option value="head" ${s.dPmode==="head"?"selected":""}>운전압력${TY.head===true?" + 액주높이 h":""}</option><option value="given" ${s.dPmode!=="head"?"selected":""}>직접입력</option></select></label></div>
+      <label class="f"><span>ΔP 산정</span><select data-path="src.dPmode" data-live="1"><option value="head" ${s.dPmode==="head"?"selected":""}>게이지 운전압력${TY.head===true?" + 액주높이 h":""}</option><option value="given" ${s.dPmode!=="head"?"selected":""}>직접입력</option></select></label></div>
       ${s.dPmode==="head"?F(TY.head===true?"액주높이 h(m) <em>(누출점 위 액면높이)</em>":"액주높이 h(m) <em>(토출압이 지배 — 보통 0)</em>","src.h","number",TY.head===true?'placeholder="예) 2"':'placeholder="예) 0"'):F("ΔP (Pa)","src.dP","number")}
       <div id="dpHintBox">${dpHintHtml(s,r)}</div>
       <details><summary style="cursor:pointer;font-size:11.5px;color:var(--blue);font-weight:600;margin:6px 0">누출시간 선정 참고 — 검출·차단 시스템 등급별 누출시간</summary>
