@@ -1236,7 +1236,7 @@ function srcPages(s,idx){
 function pgLine(s,r){
   return s.PopBasis==="a"
     ? `${esc(popLabel(s))} = ${Math.round(r.Pabs).toLocaleString()} Pa(절대) − 대기압 101,325 Pa = ${Math.round(r.Pg).toLocaleString()} Pa`
-    : `${esc(popLabel(s))} = ${Math.round(r.Pg).toLocaleString()} Pa <span style="font-size:8.5pt">(게이지로 입력했으므로 그대로 쓴다)</span>`;
+    : `${esc(popLabel(s))} = ${Math.round(r.Pg).toLocaleString()} Pa`;
 }
 function dpLines(s,m,r){
   if(s.dPmode!=="head")
