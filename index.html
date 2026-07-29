@@ -1254,8 +1254,7 @@ function dpLines(s,m,r){
   if(!r.ty.head||!(r.dPhead>0))
     /* 펌프 토출처럼 액주를 세지 않는 경우 — 게이지 운전압력이 곧 ΔP */
     return `Δ<i>P</i> = <i>P</i><sub>g</sub> <span style="font-size:8.5pt">(게이지 운전압력)</span><br>
-  &nbsp;&nbsp;&nbsp;= ${pgLine(s,r)}
-  &nbsp;<span style="font-size:8.5pt">(${esc(r.ty.desc)})</span>`;
+  &nbsp;&nbsp;&nbsp;= ${pgLine(s,r)}`;
   /* 가압 — 게이지 운전압력이 액주에 더해진다 */
   return `Δ<i>P</i> = <i>P</i><sub>g</sub> + <i>ρ</i> × <i>g</i> × <i>h</i> &nbsp;<span style="font-size:8.5pt">(<i>P</i><sub>g</sub> = 게이지 운전압력, <i>h</i> = ${(+s.h||0)} m)</span><br>
   &nbsp;&nbsp;&nbsp;<i>P</i><sub>g</sub> = ${pgLine(s,r)}<br>
@@ -1384,15 +1383,15 @@ function popHintHtml(s,m,r){
       /* 두 값을 나란히만 두면 관계가 안 보인다. 더하기를 그대로 보여 준다. */
       ? `게이지 <b>${Math.round(r.Pg).toLocaleString()}</b> + 대기압 101,325 = 절대 <b>${Math.round(r.Pabs).toLocaleString()} Pa</b>${given?` — 목록표 표기용(계산에는 쓰이지 않음)`:""}`
       : `숫자를 입력하세요.`;
-  /* 실제로 0 보다 큰 압력이 들어왔을 때만 경고한다 (빈칸·0 은 경고할 일이 아니다) */
-  const warn = (r.ty.atm&&!r.isATM&&r.popOk&&r.Pg>0)
-    ? `<div class="warn"><b>${esc(s.srcType)}</b> 유형인데 운전압력이 상압이 아닙니다.
-       ${liq?`이 압력은 Δ<i>P</i> 에 그대로 더해집니다. 실제로 가압된 설비라면 <b>가압탱크</b> 유형이 맞습니다.`
-            :`제조사 데이터를 쓰는 유형이라 이 압력은 계산에 들어가지 않고 목록표에만 표기됩니다.`}</div>` : "";
-  return `<p class="hint">${hint}</p>${warn}`;
+  /* 상압탱크에 미압이 걸려 있다고 해서 유형이 틀린 것은 아니다. 고정지붕 상압탱크는
+     브리더밸브 설정압만큼 미압을 달고 운전한다(API 650 은 약 2.5 kPa 까지 상압탱크로 본다).
+     유형은 ΔP 를 어떻게 조합할지 정할 뿐이고, 넣은 압력은 어느 유형에서든 그대로 반영된다. */
+  return `<p class="hint">${hint}</p>`;
 }
 /* 액체·액화가스의 ΔP 해설 (누출 조건 칸) */
 function dpHintHtml(s,r){
+  /* 압력을 아직 안 넣었으면 NaN 을 늘어놓지 말고 무엇이 빠졌는지만 알린다 */
+  if(s.dPmode==="head"&&!r.popOk)return `<p class="hint">운전압력을 입력하면 ΔP 가 계산됩니다.</p>`;
   const head = s.dPmode!=="head"
     ? `ΔP = ${num(r.dP,5)} Pa <em>(직접입력)</em>`
     : r.isATM
@@ -1523,7 +1522,7 @@ function renderSrcPane(){
    <table class="doc tiny" style="margin-bottom:8px"><tr><th style="width:26%">누출원 유형</th><th>압력 적용방식</th></tr>
     ${typesOf(s.상).map(k=>`<tr${k===s.srcType?' style="background:#fff5e6"':''}>
       <td>${k===s.srcType?`<b>${k}</b>`:k}</td><td>${esc(SRC_TYPES[k].press)}</td></tr>`).join("")}</table>
-   <p class="hint">${esc(TY.desc)}.<br><b>근거</b> : ${esc(TY.ref)}</p>`;
+   <p class="hint"><b>근거</b> : ${esc(TY.ref)}</p>`;
   if(orifice){
     h+=`<div class="row">${F("누출계수 Cd","src.Cd","number")}${F("누출구멍 단면적 S(㎟)","src.S","number")}</div>
    <details><summary style="cursor:pointer;font-size:11.5px;color:var(--blue);font-weight:600;margin-bottom:6px">누출계수 C<sub>d</sub> 표에서 선택</summary>${tblCd(s.Cd,true)}</details>
