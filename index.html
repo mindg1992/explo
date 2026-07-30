@@ -447,6 +447,7 @@ S.srcs[0].matId=S.mats[0].id;
 function trim(s){s=String(s);return s.indexOf(".")<0?s:s.replace(/0+$/,"").replace(/\.$/,"")}
 function sci(x,sig){sig=sig||3;
   if(!isFinite(x))return"-";
+  if(+x===0)return"0";            // log10(0) 을 태우면 "NaN × 10⁻ᴵⁿᶠ" 이 찍힌다
   const e=Math.floor(Math.log10(Math.abs(x)));const m=x/Math.pow(10,e);
   return trim(m.toPrecision(sig))+" × 10<sup>"+String(e).replace("-","\u2212")+"</sup>";}
 function num(x,sig){sig=sig||3;
@@ -455,6 +456,10 @@ function num(x,sig){sig=sig||3;
   if(a>=1e-3&&a<1e5)return trim(Number(x.toPrecision(sig)).toString());
   return sci(x,sig);}
 function fx(x,d){return isFinite(x)?Number(x).toFixed(d):"-"}
+/* 계산서에 인쇄되는 자리수로 잘라 다음 단계에 넘긴다. 계산서를 받은 사람은 PDF 에 적힌
+   숫자만 가지고 검산하므로, 눈에 보이지 않는 뒷자리로 계산을 이어가면 마지막 자리가
+   어긋난다. n 은 그 값이 인쇄될 유효자리수 — num(x,n)·sci(x,n) 과 짝을 맞춰 쓴다. */
+function SIG(x,n){return isFinite(x)?Number(Number(x).toPrecision(n)):x}
 function m1(x){return isFinite(+x)?Number(x).toFixed(1):"-"}      // 거리 표기는 소수 1자리
 
 /* ===================== 계산 엔진 ===================== */
@@ -473,6 +478,9 @@ function calcSrc(s,m){
   r.LFL=LFL;r.S_m2=S_m2;
   const Ta=+s.Ta+273.15, Top=+s.Top+273.15;
   r.Ta=Ta;r.Top=Top;
+  /* 계산서에 적히는 꼴 그대로 — 온도는 소수 2자리, LFL 은 소수 5자리로 인쇄된다.
+     아래 계산은 이 값들로 이어가야 PDF 를 손으로 검산했을 때 맞는다. */
+  const Tap=+Ta.toFixed(2), Topp=+Top.toFixed(2), LFLp=+LFL.toFixed(5);
   const TY=tyOf(s); r.ty=TY; r.mode=TY.mode;
   if(!PHASES[s.상])s.상="L";
   if(SRC_TYPES[s.srcType]!==TY)s.srcType=Object.keys(SRC_TYPES).find(k=>SRC_TYPES[k]===TY);
@@ -483,13 +491,13 @@ function calcSrc(s,m){
   if(TY.pool==="spill")s.poolMode="spill";
   const P0=popPa(s);
   r.isATM=P0.isATM; r.popOk=P0.ok; r.Pg=P0.Pg; r.Pabs=P0.Pabs;
-  r.rho_g = PA_ATM*M/(R_GAS*Ta);
+  r.rho_g = PA_ATM*M/(R_GAS*Tap);
 
   if(TY.mode==="given"){
     /* 브리더밸브 등 — 제조사 데이터의 누출률을 그대로 쓴다(지침 부속서 2.2.1(3)) */
     r.Wg = +s.Wg직접;
-    r.Qg = r.Wg/r.rho_g;
-    r.C  = r.Wg/(r.rho_g*k*LFL);
+    r.Qg = SIG(r.Wg,3)/SIG(r.rho_g,4);
+    r.C  = SIG(r.Qg,3)/(k*LFLp);
   }else if(TY.mode==="liquid"||TY.mode==="flash"){
     /* ΔP = 게이지 운전압력 + 액주 ρgh.
        상압이면 앞항이 0 이라 지금까지처럼 ρgh 만 남는다. */
@@ -503,22 +511,23 @@ function calcSrc(s,m){
     r.dPshow = (!r.dPneg && s.dPmode==="head" && !P0.isATM && TY.head && r.dPhead>0)
       ? Math.round(r.Pg)+Math.round(r.dPhead)
       : Math.round(r.dP);
-    r.hEq = r.dP/(rho*G);              // ΔP 를 직접 넣었을 때의 상당 액주높이
-    r.W  = (+s.Cd)*S_m2*Math.sqrt(2*rho*r.dP);
+    r.hEq = r.dPshow/(rho*G);          // ΔP 를 직접 넣었을 때의 상당 액주높이
+    /* 아래 한 줄부터가 계산서의 계산 순서다. 각 단계는 앞 단계에서 "인쇄된" 값을 받는다 */
+    r.W  = (+s.Cd)*S_m2*Math.sqrt(2*rho*r.dPshow);
     if(TY.mode==="flash"){
       /* 가압 액화가스 : 누출점에서 플래시 증발한 분율만 증기운이 된다.
          지침 부속서 2.2.1(1) 이 Wg 를 "증기화된 액체비율"(W의 2%)로 잡은 방식과 같다.
          남은 액체는 지침 예제처럼 배출되는 것으로 보고 풀은 세지 않는다. */
       r.Fv = (+s.Fv)/100;
-      r.Wg = r.W*r.Fv;
-      r.Qg = r.Wg/r.rho_g;
-      r.C  = r.Wg/(r.rho_g*k*LFL);
+      r.Wg = SIG(r.W,4)*r.Fv;
+      r.Qg = SIG(r.Wg,3)/SIG(r.rho_g,4);
+      r.C  = SIG(r.Qg,3)/(k*LFLp);
     }else{
-      r.V  = r.W*(+s.t)/rho;
+      r.V  = SIG(r.W,4)*(+s.t)/rho;
       if(s.poolMode==="tank"){ r.Ap=Math.PI*Math.pow(+s.D,2)/4; }
-      else { r.Ap=r.V/0.01; }
-      r.Qg = 6.5*Math.pow(+s.uw,0.78)*r.Ap*Pv/(1e5*Math.pow(M,0.333))*(Ta/Top);
-      r.C  = r.Qg/(k*LFL);
+      else { r.Ap=SIG(r.V,4)/0.01; }
+      r.Qg = 6.5*Math.pow(+s.uw,0.78)*SIG(r.Ap,4)*Pv/(1e5*Math.pow(M,0.333))*(Tap/Topp);
+      r.C  = SIG(r.Qg,3)/(k*LFLp);
       r.Wg = null;
     }
   }else{
@@ -534,9 +543,9 @@ function calcSrc(s,m){
       const inner=M/(Z*R_GAS*T)*(2*g/(g-1))*(1-Math.pow(PA_ATM/P,(g-1)/g));
       r.Wg=(+s.Cd)*S_m2*P*Math.sqrt(Math.max(inner,0))*Math.pow(PA_ATM/P,1/g);
     }
-    r.rho_g = PA_ATM*M/(R_GAS*Ta);
-    r.Qg = r.Wg/r.rho_g;
-    r.C  = r.Wg/(r.rho_g*k*LFL);
+    r.rho_g = PA_ATM*M/(R_GAS*Tap);
+    r.Qg = SIG(r.Wg,3)/SIG(r.rho_g,4);
+    r.C  = SIG(r.Qg,3)/(k*LFLp);
   }
   // 희석등급
   const uw=+s.uw;
@@ -571,8 +580,11 @@ function calcSrc(s,m){
   // 범위
   const cv=EXT[s.누출형태];
   r.rRaw = cv.a*Math.pow(r.C,cv.b);
-  r.rChart = Math.max(1, r.rRaw);
-  r.belowChart = r.rRaw<1;
+  /* 차트 판독값도 계산서에 적히는 자리수(4자리)로 잘라 쓴다. 적힌 r 을 0.1 m 로 올린 값이
+     범위가 되어야, 계산서에 "r = 20.70 m → 20.7 m" 처럼 앞뒤가 맞는다. */
+  r.rShow = SIG(r.rRaw,4);
+  r.rChart = Math.max(1, r.rShow);
+  r.belowChart = r.rShow<1;
   // 소수 1자리, 올림(반내림하면 실제 반경보다 작게 적힐 수 있다)
   r.범위 = s.범위모드==="auto" ? (r.done?Math.max(1,Math.ceil(r.rChart*10)/10):"-") : (+s.범위수동||0);
   // 도면 수평·수직 범위를 비워두면 산정된 범위를 그대로 쓴다
@@ -1224,7 +1236,7 @@ function srcPages(s,idx){
    ${r.NE?`<div style="border:1px solid #c00;padding:6px 8px;font-size:9.5pt;color:#c00;margin-bottom:6px">
      ※ 판정 결과가 NE(무시할 수 있는 범위)이므로 지침 &lt;표 1&gt; 비고 a에 따라 정상조건에서 무시될 수 있는 이론적 폭발위험장소이다. 아래 차트는 참고용이다.</div>`:""}
    <figure>${chartExtent(r,s.누출형태)}</figure>
-   <p class="ind" style="font-size:9.5pt">적용곡선 : ${s.누출형태} / 계산값 r = ${num(r.rRaw,3)} m
+   <p class="ind" style="font-size:9.5pt">적용곡선 : ${s.누출형태} / 계산값 r = ${num(r.rShow,4)} m
    ${r.belowChart?` → 차트 하한(1 m) 미만이므로 보수적으로 <b>1 m</b> 적용`:""}</p>
    <p class="ind" style="font-size:9.5pt">수평범위 ${m1(r.수평)} m, 수직범위 ${m1(r.수직)} m 를 도면에 반영한다.</p>
    ${r.msg.length?`<div style="border-left:3px solid #e2620d;padding:4px 8px;font-size:9pt;margin-top:8px">${r.msg.map(x=>"※ "+x).join("<br>")}</div>`:""}`,K("e"));
@@ -1508,7 +1520,7 @@ function renderSrcPane(){
    <dt><b>누출특성</b></dt><dd><b>${num(r.C,3)} m³/s</b></dd>
    <dt>희석등급 (차트)</dt><dd>${r.희석auto}${s.희석모드!=="auto"?` → <b>${r.희석}</b>`:""}</dd>
    <dt>폭발위험장소</dt><dd><span class="tag ${zoneClass(r.zone)}">${r.zone}</span></dd>
-   <dt>범위(차트) r</dt><dd>${num(r.rRaw,3)} m → ${m1(r.범위)} m</dd></dl>
+   <dt>범위(차트) r</dt><dd>${num(r.rShow,4)} m → ${m1(r.범위)} m</dd></dl>
    ${r.msg.map(x=>`<div class="warn">${x}</div>`).join("")}</div>`;
 
   h+=`<fieldset><legend>누출원 개요</legend>
@@ -1680,7 +1692,7 @@ function syncSide(){
      <dt><b>누출특성</b></dt><dd><b>${num(r.C,3)} m³/s</b></dd>
      <dt>희석등급 (차트)</dt><dd>${r.희석auto}${s.희석모드!=="auto"?` → <b>${r.희석}</b>`:""}</dd>
      <dt>폭발위험장소</dt><dd><span class="tag ${zoneClass(r.zone)}">${r.zone}</span></dd>
-     <dt>범위(차트) r</dt><dd>${num(r.rRaw,3)} m → ${m1(r.범위)} m</dd></dl>
+     <dt>범위(차트) r</dt><dd>${num(r.rShow,4)} m → ${m1(r.범위)} m</dd></dl>
      ${r.msg.map(x=>`<div class="warn">${x}</div>`).join("")}`;
   }
 }
