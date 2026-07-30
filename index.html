@@ -497,6 +497,12 @@ function calcSrc(s,m){
     r.dPop   = P0.isATM ? 0 : P0.Pg;
     r.dP = s.dPmode==="head" ? (r.dPhead+r.dPop) : +s.dP;
     if(isFinite(r.dP)&&r.dP<0){r.dPneg=true;r.dP=0}   // 부압이면 액이 밀려나가지 않는다
+    /* 계산서에 적히는 ΔP. 두 항을 각각 정수 Pa 로 적으므로 합계도 적힌 두 정수의 합이어야
+       손으로 더해 본 값과 맞는다(7,999 + 24,637 을 적고 32,637 로 끝내면 안 된다).
+       계산 자체는 위의 정확한 r.dP 로 하고, 이 값은 표기에만 쓴다. */
+    r.dPshow = (!r.dPneg && s.dPmode==="head" && !P0.isATM && TY.head && r.dPhead>0)
+      ? Math.round(r.Pg)+Math.round(r.dPhead)
+      : Math.round(r.dP);
     r.hEq = r.dP/(rho*G);              // ΔP 를 직접 넣었을 때의 상당 액주높이
     r.W  = (+s.Cd)*S_m2*Math.sqrt(2*rho*r.dP);
     if(TY.mode==="flash"){
@@ -552,7 +558,7 @@ function calcSrc(s,m){
     if(miss.length)r.msg.push(`${miss.join(" · ")} 을(를) 입력해야 계산됩니다.`);
     if(!r.msg.length)r.msg.push("입력값이 부족하여 계산할 수 없습니다.");
   }
-  if(r.dPneg)r.msg.push("운전압력이 대기압보다 낮아(부압) 액주를 더해도 ΔP ≤ 0 입니다. ΔP = 0 으로 두었습니다.");
+  if(r.dPneg)r.msg.push("운전압력이 대기압보다 낮아(부압) 액주를 더해도 개구부 안쪽 압력이 대기압에 못 미칩니다. 액체가 유출되는 대신 외기가 유입되는 조건이므로 <b>이 개구부는 액체 누출원이 아니며 W = 0</b> 입니다. 누출점 위치와 액면높이 h 를 다시 확인하세요.");
   r.bHi = DIL_HI.a*Math.pow(r.C,DIL_HI.b);
   r.bLo = DIL_LO.a*Math.pow(r.C,DIL_LO.b);
   r.희석auto = r.done ? (uw>=r.bHi ? "고희석" : (uw<=r.bLo ? "저희석" : "중희석")) : "-";
@@ -1242,15 +1248,24 @@ function pgLine(s,r){
     ? `${esc(popLabel(s))} = ${Math.round(r.Pabs).toLocaleString()} Pa(절대) − 대기압 101,325 Pa = ${Math.round(r.Pg).toLocaleString()} Pa`
     : `${esc(popLabel(s))} = ${Math.round(r.Pg).toLocaleString()} Pa`;
 }
+/* 두 항을 적어 놓은 줄의 오른쪽 끝. 부압이면 적힌 두 수의 합(음수)을 그대로 보인다.
+   ΔP 가 음수라는 것은 개구부 안쪽이 대기압보다 낮다는 뜻 — 액체가 밀려나가는 대신
+   외기가 빨려 들어가므로 이 개구부는 액체 누출원이 아니고 W = 0 이다.
+   (계산은 √ 안에 음수를 넣을 수 없어 ΔP 를 0 으로 두지만, 그건 내부 처리일 뿐이므로 적지 않는다) */
+function dpSumTail(r){
+  if(!r.dPneg)return `${r.dPshow.toLocaleString()} Pa`;
+  const sum=Math.round(r.Pg)+Math.round(r.dPhead);
+  return `${sum.toLocaleString()} Pa &lt; 0 → 개구부 안쪽이 대기압보다 낮아 액체가 유출되지 않는다(외기 유입) : <i>W</i> = 0`;
+}
 function dpLines(s,m,r){
   if(s.dPmode!=="head")
     /* ΔP 를 직접 적용한 경우. h 는 그 압력에 상당하는 액주높이를 역산한 값 */
-    return `Δ<i>P</i> = ${Math.round(r.dP).toLocaleString()} Pa 를 적용함<br>
-  &nbsp;&nbsp;&nbsp;<i>h</i> = <span class="frac"><span>Δ<i>P</i></span><span class="den"><i>ρ</i> × <i>g</i></span></span> = ${Math.round(r.dP).toLocaleString()} / (${m.rho} kg/m³ × 9.8 m/sec²) = ${fx(r.hEq,2)} m &nbsp;(상당 액주높이)`;
+    return `Δ<i>P</i> = ${r.dPshow.toLocaleString()} Pa 를 적용함<br>
+  &nbsp;&nbsp;&nbsp;<i>h</i> = <span class="frac"><span>Δ<i>P</i></span><span class="den"><i>ρ</i> × <i>g</i></span></span> = ${r.dPshow.toLocaleString()} / (${m.rho} kg/m³ × 9.8 m/sec²) = ${fx(r.hEq,2)} m &nbsp;(상당 액주높이)`;
   if(r.isATM)
     /* 상압(게이지 0) — 액주만 남는다 */
     return `Δ<i>P</i> = <i>ρ</i> × <i>g</i> × <i>h</i> (운전압력 상압, <i>h</i> = ${s.h} m 로 가정함)<br>
-  &nbsp;&nbsp;&nbsp;= ${m.rho} kg/m³ × 9.8 m/sec² × ${s.h} m = ${fx(r.dP,2)} kg/(m·s²) ≈ ${Math.round(r.dP).toLocaleString()} Pa`;
+  &nbsp;&nbsp;&nbsp;= ${m.rho} kg/m³ × 9.8 m/sec² × ${s.h} m = ${fx(r.dP,2)} kg/(m·s²) ≈ ${r.dPshow.toLocaleString()} Pa`;
   if(!r.ty.head||!(r.dPhead>0))
     /* 펌프 토출처럼 액주를 세지 않는 경우 — 게이지 운전압력이 곧 ΔP */
     return `Δ<i>P</i> = <i>P</i><sub>g</sub> <span style="font-size:8.5pt">(게이지 운전압력)</span><br>
@@ -1259,7 +1274,7 @@ function dpLines(s,m,r){
   return `Δ<i>P</i> = <i>P</i><sub>g</sub> + <i>ρ</i> × <i>g</i> × <i>h</i> &nbsp;<span style="font-size:8.5pt">(<i>P</i><sub>g</sub> = 게이지 운전압력, <i>h</i> = ${(+s.h||0)} m)</span><br>
   &nbsp;&nbsp;&nbsp;<i>P</i><sub>g</sub> = ${pgLine(s,r)}<br>
   &nbsp;&nbsp;&nbsp;<i>ρgh</i> = ${m.rho} kg/m³ × 9.8 m/sec² × ${(+s.h||0)} m = ${Math.round(r.dPhead).toLocaleString()} Pa<br>
-  &nbsp;&nbsp;&nbsp;∴ Δ<i>P</i> = ${Math.round(r.Pg).toLocaleString()} + ${Math.round(r.dPhead).toLocaleString()} = ${Math.round(r.dP).toLocaleString()} Pa
+  &nbsp;&nbsp;&nbsp;∴ Δ<i>P</i> = ${Math.round(r.Pg).toLocaleString()} + ${Math.round(r.dPhead).toLocaleString()} = ${dpSumTail(r)}
 `;
 }
 
@@ -1273,7 +1288,7 @@ function flashCalc(s,m,r,cn){
   <p class="ind">⑴ 액체 누출률</p>${EQ.liq}${DEF.liq}
   <div class="calc">
   ${dpLines(s,m,r)}<br>
-  ∴ <i>W</i> = ${s.Cd} × ${S6} × √(2 × ${m.rho} × ${Math.round(r.dP)}) = <span class="res">${num(r.W,4)} kg/s</span></div>
+  ∴ <i>W</i> = ${s.Cd} × ${S6} × √(2 × ${m.rho} × ${r.dPshow}) = <span class="res">${num(r.W,4)} kg/s</span></div>
   <p class="ind">⑵ 플래시 증발분율 적용</p>
   <div class="dl"><b><i>F<sub>v</sub></i></b> : 누출 지점에서 증기화된 액체비율${String(s.Fv근거||"").trim()?` — ${esc(s.Fv근거)}`:""}</div>
   <div class="calc"><i>W<sub>g</sub></i> = <i>W</i> × <i>F<sub>v</sub></i> = ${num(r.W,4)} × ${trim(String(+s.Fv))}% = <span class="res">${num(r.Wg,3)} kg/s</span><br>
@@ -1314,9 +1329,9 @@ function liqCalc(s,m,r,cn){
   <div class="dl"><b>Δ<i>P</i></b> : 개구부에서의 누설 압력 차 (Pa)</div>
   <div class="calc">
   ${dpLines(s,m,r)}<br>
-  ∴ <i>W</i> = ${s.Cd} × ${S6} × √(2 × ${m.rho} × ${Math.round(r.dP)}) = <span class="res">${num(r.W,4)} kg/s</span><br>
-  &nbsp;&nbsp;<i>V</i><sub>누출</sub> = ${num(r.W,4)} × ${s.t} / ${m.rho} = <span class="res">${num(r.V,3)} m³</span><br>
-  &nbsp;&nbsp;<i>A<sub>p</sub></i> = ${num(r.V,3)} / 0.01 = <span class="res">${num(r.Ap,4)} m²</span></div>`
+  ∴ <i>W</i> = ${s.Cd} × ${S6} × √(2 × ${m.rho} × ${r.dPshow}) = <span class="res">${num(r.W,4)} kg/s</span><br>
+  &nbsp;&nbsp;<i>V</i><sub>누출</sub> = ${num(r.W,4)} × ${s.t} / ${m.rho} = <span class="res">${num(r.V,4)} m³</span><br>
+  &nbsp;&nbsp;<i>A<sub>p</sub></i> = ${num(r.V,4)} / 0.01 = <span class="res">${num(r.Ap,4)} m²</span></div>`
   :`<p class="ind2" style="color:#1546a0;font-size:9.5pt">* 탱크에 저장된 물질의 액표면 면적(탱크 단면적) 적용 — 대기와 연결된 통기구가 설치된 고정지붕 탱크 내부의 인화성 액체 표면</p>
   <div class="calc"><i>A<sub>p</sub></i> = <span class="frac"><span>π × ${s.D}²</span><span class="den">4</span></span> = <span class="res">${num(r.Ap,4)} m²</span> &nbsp;(탱크 내경 D = ${s.D} m)</div>`}
   <div class="calc" style="margin-top:8px">
@@ -1396,7 +1411,7 @@ function dpHintHtml(s,r){
     ? `ΔP = ${num(r.dP,5)} Pa <em>(직접입력)</em>`
     : r.isATM
       ? `ΔP = ρ·g·h = ${num(r.dP,5)} Pa <em>(운전압력 상압)</em>`
-      : `ΔP = P<sub>게이지</sub> + ρ·g·h = ${Math.round(r.Pg).toLocaleString()} + ${Math.round(r.dPhead).toLocaleString()} = <b>${Math.round(r.dP).toLocaleString()} Pa</b>`;
+      : `ΔP = P<sub>게이지</sub> + ρ·g·h = ${Math.round(r.Pg).toLocaleString()} + ${Math.round(r.dPhead).toLocaleString()} = <b>${dpSumTail(r)}</b>`;
   return `<p class="hint">${head}</p>`;
 }
 function Sel(label,path,opts){
@@ -1543,7 +1558,7 @@ function renderSrcPane(){
       ${F("플래시 증발분율 F<sub>v</sub> (%)","src.Fv","number",'placeholder="예) 2"')}</div>
     ${s.dPmode==="head"?F("액주높이 h(m) <em>(보통 0)</em>","src.h","number",'placeholder="예) 0"'):F("ΔP (Pa)","src.dP","number")}
     ${F("F<sub>v</sub> 산정근거","src.Fv근거","text",'placeholder="예) 누출 지점에서 증기화된 액체비율을 고려하여 결정(W의 2%)"')}
-    <div id="dpHintBox"><p class="hint">ΔP = ${Math.round(r.dP||0).toLocaleString()} Pa → W = <b>${num(r.W,4)} kg/s</b> → W<sub>g</sub> = W × F<sub>v</sub> = <b>${num(r.Wg,3)} kg/s</b></p></div>
+    <div id="dpHintBox"><p class="hint">ΔP = ${(r.dPshow||0).toLocaleString()} Pa → W = <b>${num(r.W,4)} kg/s</b> → W<sub>g</sub> = W × F<sub>v</sub> = <b>${num(r.Wg,3)} kg/s</b></p></div>
     <div class="warn">지침 6.3.3 은 액화가스의 플래시 분율을 계산하는 식을 주지 않습니다. F<sub>v</sub> 는 물질의 열역학 데이터로 별도 산정하거나
      (근사식 F<sub>v</sub> ≈ C<sub>p</sub>(T<sub>저장</sub>−T<sub>비점</sub>)/H<sub>vap</sub>), 지침 예제처럼 근거를 명시해 가정해야 합니다.
      에어로졸·저온풀이 함께 생기는 경우는 이 모델의 범위 밖이므로 별도 검토가 필요합니다.</div>`;
@@ -1646,7 +1661,7 @@ function syncSide(){
   const dh=$("#dpHintBox");
   if(dh){
     dh.innerHTML = r.mode==="flash"
-      ? `<p class="hint">ΔP = ${Math.round(r.dP||0).toLocaleString()} Pa → W = <b>${num(r.W,4)} kg/s</b> → W<sub>g</sub> = W × F<sub>v</sub> = <b>${num(r.Wg,3)} kg/s</b></p>`
+      ? `<p class="hint">ΔP = ${(r.dPshow||0).toLocaleString()} Pa → W = <b>${num(r.W,4)} kg/s</b> → W<sub>g</sub> = W × F<sub>v</sub> = <b>${num(r.Wg,3)} kg/s</b></p>`
       : dpHintHtml(s,r);
   }
   const box=$("#pane-src .readout");
