@@ -1181,6 +1181,12 @@ function estAuto(s,r){
   return `환기유효성 ${r.희석}, 환기등급 ${r.이용도}으로 위험장소구분 기준으로 ${r.zone} 장소이며,\n`
        + `위험성을 고려하여 장치로부터 ${m1(r.수평)} m 를 ${r.zone} 장소로 구분함.`;
 }
+function estHint(s){
+  return "계산서 마지막 요약표 오른쪽 칸에 그대로 실립니다. 줄바꿈도 그대로 반영됩니다. "
+   + (String(s.추정문구||"").trim()
+      ? "직접 고친 문구라 계산이 바뀌어도 그대로 남습니다."
+      : "아직 고치지 않아 계산 결과에 맞춰 계속 갱신됩니다.");
+}
 function estHtml(s,r){
   const t=String(s.추정문구==null?"":s.추정문구).trim();
   return esc(t||estAuto(s,r)).replace(/\n/g,"<br>");
@@ -1650,15 +1656,14 @@ function renderSrcPane(){
    <p class="hint">비워두면 산정된 범위(${m1(r.범위)} m)를 그대로 씁니다. 도면에 다른 값을 반영할 때만 입력하세요.</p>
   </fieldset>`;
 
-  /* ⑦ 마지막 요약표의 "※ 폭발위험지역의 추정" 칸 — 비우면 자동, 적으면 적은 대로 */
+  /* ⑦ 마지막 요약표의 "※ 폭발위험지역의 추정" 칸.
+     칸에는 자동 작성된 문구가 이미 들어가 있고, 거기서 고쳐 쓰는 방식이다.
+     손대기 전까지는 계산이 바뀔 때마다 따라 바뀌고, 고치는 순간 그 문구로 굳는다. */
   h+=`<fieldset><legend>⑦ ※ 폭발위험지역의 추정 문구</legend>
-   <div style="display:flex;gap:6px;margin-bottom:8px">
-     <button class="mini" data-act="estfill">자동문구 불러와 편집</button>
-     <button class="mini" data-act="estclr">자동으로 되돌리기</button></div>
-   <label class="f"><span>문구 <em>(비우면 자동 작성)</em></span><textarea data-path="src.추정문구" rows="4"
-    placeholder="${esc(estAuto(s,r)).replace(/"/g,"&quot;").replace(/\n/g,"&#10;")}">${esc(s.추정문구)}</textarea></label>
-   <p class="hint">계산서 마지막 요약표 오른쪽 칸에 그대로 실립니다. 줄바꿈도 그대로 반영됩니다.
-    비워 두면 <b>${esc(estAuto(s,r)).replace(/\n/g,"<br>")}</b> 로 자동 작성됩니다.</p>
+   <label class="f"><span>문구 <em>(자동 작성된 문장을 고쳐 쓰세요)</em></span><textarea
+    data-path="src.추정문구" data-auto="1" rows="4">${esc(s.추정문구||estAuto(s,r))}</textarea></label>
+   <div style="margin-top:6px"><button class="mini" data-act="estclr">자동문구로 되돌리기</button></div>
+   <p class="hint" id="estHint">${estHint(s)}</p>
   </fieldset>`;
   $("#pane-src").innerHTML=h;
 }
@@ -1700,6 +1705,11 @@ function syncSide(){
       ? `<p class="hint">ΔP = ${(r.dPshow||0).toLocaleString()} Pa → W = <b>${num(r.W,4)} kg/s</b> → W<sub>g</sub> = W × F<sub>v</sub> = <b>${num(r.Wg,3)} kg/s</b></p>`
       : dpHintHtml(s,r);
   }
+  /* 아직 직접 손대지 않은 추정문구는 계산이 바뀌면 따라 바뀐다.
+     지금 그 칸에 커서가 있으면 쓰던 글이 지워지므로 건드리지 않는다. */
+  const et=$("#pane-src textarea[data-auto]");
+  if(et&&!String(s.추정문구||"").trim()&&document.activeElement!==et)et.value=estAuto(s,r);
+  const eh=$("#estHint"); if(eh)eh.textContent=estHint(s);
   const box=$("#pane-src .readout");
   if(box){const tmp=document.createElement("div");
     tmp.innerHTML=`<div class="readout">${box.innerHTML}</div>`;}
@@ -1766,7 +1776,6 @@ document.addEventListener("click",e=>{
     case"cd":s.Cd=+v;s.Cd근거=(CD_ROWS.find(x=>+x[2]===+v)||["",""])[0];renderSrcPane();renderReport();break;
     case"k":s.k=+v;s.k근거=K_ROWS.find(r=>+r[2]===+v)[1];renderSrcPane();renderReport();break;
     case"tsel":s.t=+v;renderSrcPane();renderReport();break;
-    case"estfill":s.추정문구=estAuto(s,calcSrc(s,matOf(s)));renderSrcPane();renderReport();break;
     case"estclr":s.추정문구="";renderSrcPane();renderReport();break;
     case"uw":s.uw=+v;s.uwcell=b.dataset.cell||"";s.uw옥내=!b.dataset.cell;
       s.uw근거 = (+v===0.05)?"옥내의 경우 최소 공기속도 0.05 m/s 가정(<표 1> 비고)":"<표 1> 옥외 환기속도 적용";
