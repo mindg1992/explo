@@ -389,6 +389,7 @@ function newSrc(n){
     누출형태:"무거운가스",
     희석모드:"auto",희석수동:"중희석",희석근거:"설비특성상",
     범위모드:"auto",범위수동:"",수평:"",수직:"",
+    추정문구:"",
     Ta:25,Top:25,Pop:"",PopUnit:"상압",PopBasis:"g",비고:""};
 }
 /* 예전에 저장한 파일은 운전압력이 "ATM" 같은 표기용 문자열이었고,
@@ -396,6 +397,7 @@ function newSrc(n){
 function fillSrcDefaults(s){
   if(!s)return;
   if(s.Wg직접==null)s.Wg직접="";
+  if(s.추정문구==null)s.추정문구="";
   if(s.Fv==null)s.Fv="";
   if(s.PopUnit==null){
     const lg=String(s.운전압력==null?"":s.운전압력).trim(), n=lg.match(/-?[\d.]+/);
@@ -1172,6 +1174,18 @@ function part2Table(){
   return h+`</table>`;
 }
 
+/* ※ 폭발위험지역의 추정 — 마지막 요약표 오른쪽 칸의 문구.
+   비워 두면 계산 결과로 자동 작성하고, 입력해 두면 적은 그대로 싣는다.
+   설비마다 현장 사정(구획·방류벽·인접설비 등)을 덧붙여야 할 때가 있어서 직접 쓸 수 있게 열어 둔다. */
+function estAuto(s,r){
+  return `환기유효성 ${r.희석}, 환기등급 ${r.이용도}으로 위험장소구분 기준으로 ${r.zone} 장소이며,\n`
+       + `위험성을 고려하여 장치로부터 ${m1(r.수평)} m 를 ${r.zone} 장소로 구분함.`;
+}
+function estHtml(s,r){
+  const t=String(s.추정문구==null?"":s.추정문구).trim();
+  return esc(t||estAuto(s,r)).replace(/\n/g,"<br>");
+}
+
 /* --------- 설비별 계산 페이지 --------- */
 function srcPages(s,idx){
   const m=matOf(s), r=calcSrc(s,m);
@@ -1250,8 +1264,7 @@ function srcPages(s,idx){
      <div>기기 그룹 및 온도 등급</div><div>${esc(m.그룹)} ${esc(m.온도)}</div>
      <div>계산거리(반경)</div><div>${m1(r.범위)} m</div>
    </div><div class="rgt">※ 폭발위험지역의 추정<br>
-     환기유효성 ${r.희석}, 환기등급 ${r.이용도}으로 위험장소구분 기준으로 ${r.zone} 장소이며,<br>
-     위험성을 고려하여 장치로부터 ${m1(r.수평)} m 를 ${r.zone} 장소로 구분함.</div></div>`,K("f"));
+     ${estHtml(s,r)}</div></div>`,K("f"));
 }
 /* ΔP 산정 과정 — 액체 오리피스식을 쓰는 유형(액체·액화가스)이 함께 쓴다 */
 /* 입력한 운전압력을 게이지압으로 바꾸는 한 줄. 절대로 넣었으면 대기압을 빼는 과정을 보인다. */
@@ -1636,6 +1649,17 @@ function renderSrcPane(){
    <div class="row">${F("도면 수평범위(m)","src.수평","number",'placeholder="비우면 자동"')}${F("도면 수직범위(m)","src.수직","number",'placeholder="비우면 자동"')}</div>
    <p class="hint">비워두면 산정된 범위(${m1(r.범위)} m)를 그대로 씁니다. 도면에 다른 값을 반영할 때만 입력하세요.</p>
   </fieldset>`;
+
+  /* ⑦ 마지막 요약표의 "※ 폭발위험지역의 추정" 칸 — 비우면 자동, 적으면 적은 대로 */
+  h+=`<fieldset><legend>⑦ ※ 폭발위험지역의 추정 문구</legend>
+   <div style="display:flex;gap:6px;margin-bottom:8px">
+     <button class="mini" data-act="estfill">자동문구 불러와 편집</button>
+     <button class="mini" data-act="estclr">자동으로 되돌리기</button></div>
+   <label class="f"><span>문구 <em>(비우면 자동 작성)</em></span><textarea data-path="src.추정문구" rows="4"
+    placeholder="${esc(estAuto(s,r)).replace(/"/g,"&quot;").replace(/\n/g,"&#10;")}">${esc(s.추정문구)}</textarea></label>
+   <p class="hint">계산서 마지막 요약표 오른쪽 칸에 그대로 실립니다. 줄바꿈도 그대로 반영됩니다.
+    비워 두면 <b>${esc(estAuto(s,r)).replace(/\n/g,"<br>")}</b> 로 자동 작성됩니다.</p>
+  </fieldset>`;
   $("#pane-src").innerHTML=h;
 }
 
@@ -1742,6 +1766,8 @@ document.addEventListener("click",e=>{
     case"cd":s.Cd=+v;s.Cd근거=(CD_ROWS.find(x=>+x[2]===+v)||["",""])[0];renderSrcPane();renderReport();break;
     case"k":s.k=+v;s.k근거=K_ROWS.find(r=>+r[2]===+v)[1];renderSrcPane();renderReport();break;
     case"tsel":s.t=+v;renderSrcPane();renderReport();break;
+    case"estfill":s.추정문구=estAuto(s,calcSrc(s,matOf(s)));renderSrcPane();renderReport();break;
+    case"estclr":s.추정문구="";renderSrcPane();renderReport();break;
     case"uw":s.uw=+v;s.uwcell=b.dataset.cell||"";s.uw옥내=!b.dataset.cell;
       s.uw근거 = (+v===0.05)?"옥내의 경우 최소 공기속도 0.05 m/s 가정(<표 1> 비고)":"<표 1> 옥외 환기속도 적용";
       renderSrcPane();renderReport();break;
