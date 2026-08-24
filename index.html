@@ -129,6 +129,14 @@ table.pick tr.on td.lab{box-shadow:inset 3px 0 0 var(--mark)}
 .itctl button:hover{border-color:var(--blue);color:var(--blue);background:var(--blue-soft)}
 .itctl button.on{background:var(--mark);border-color:var(--mark);color:#241000;font-weight:700}
 .it.brk>.itctl,.it.spaced>.itctl{opacity:.55}
+/* 장 오른쪽 위 톱니 — 그 장만 여백·간격을 따로 주는 자리 */
+.pgctl{position:absolute;top:3mm;right:3mm;width:20px;height:20px;padding:0;z-index:4;
+  border:1px solid var(--rule);background:#fff;border-radius:5px;cursor:pointer;
+  font-size:12px;line-height:1;color:var(--ink-3);opacity:0;transition:opacity .12s;font-family:var(--ui)}
+.page:hover>.pgctl{opacity:.8}
+.pgctl:hover{opacity:1!important;border-color:var(--blue);color:var(--blue);background:var(--blue-soft)}
+.page.pgov>.pgctl{opacity:1;background:var(--mark);border-color:var(--mark);color:#241000;font-weight:700}
+.page.pgsel{outline:2px solid var(--blue);outline-offset:3px}
 .page.over{outline:1px dashed #c0392b;outline-offset:3px}
 .page.over::after{content:"이 블록은 A4 한 장을 넘습니다 — 인쇄 시 자동으로 나뉩니다";
   position:absolute;left:15mm;bottom:4mm;font-size:8pt;color:#c0392b;font-family:var(--ui)}
@@ -212,8 +220,9 @@ table.spec td.k{background:#fff;font-weight:600}
         page-break-after:always;break-after:page;page-break-inside:avoid}
   .page:last-child{page-break-after:auto;break-after:auto}
   .cover{min-height:215mm}
-  .itctl,#measure{display:none!important}
+  .itctl,.pgctl,#measure{display:none!important}
   .it.brk::before,.page.over::after{display:none!important}
+  .page.pgsel{outline:0}
   .page.over{outline:0;height:auto;overflow:visible;page-break-inside:auto}
   .blk{break-inside:auto;page-break-inside:auto}
   figure,table.spec,.sumbox,table.doc{break-inside:avoid;page-break-inside:avoid}
@@ -431,8 +440,8 @@ const S={
     물질비고:"",
     여백상:18,여백하:14,여백좌:15,여백우:15,
     쪽번호자리:9,여유:4,블록간격:6,줄간격:1.6,표여백:3,
-    breaks:[],spacers:{},spcv:2},
-  mats:[],srcs:[],selMat:0,selSrc:0
+    breaks:[],spacers:{},spcv:2,pageset:{}},
+  mats:[],srcs:[],selMat:0,selSrc:0,selPageKey:null
 };
 /* 예전에 저장한 설정 파일에는 아래 항목이 없으므로 기본값을 채운다 */
 function fillDocDefaults(d){
@@ -446,6 +455,7 @@ function fillDocDefaults(d){
   for(const k in LAY){const v=+d[k], q=LAY[k];d[k]=(isFinite(v)&&v>=q[1]&&v<=q[2])?v:q[0]}
   /* 줄 띄우기 한 칸이 6mm 이던 시절의 파일. 2mm 단위로 옮기되 높이는 그대로 둔다 */
   if(d.spcv!==2){for(const k in d.spacers)d.spacers[k]=Math.round((+d.spacers[k]||0)*3);d.spcv=2}
+  if(!d.pageset||typeof d.pageset!=="object")d.pageset={};
 }
 S.mats.push(newMat("톨루엔"));
 S.srcs.push(newSrc());
@@ -968,7 +978,8 @@ function applyPageStyle(){
     /* 쪽번호는 본문 영역 맨 아래 가운데. 배치에서 그 자리를 미리 떼어놨으므로 겹치지 않는다 */
     `.page .pno{left:${m.l}mm;right:${m.r}mm;bottom:${m.b}mm}`+
     `.cover{min-height:${usableMM()-6}mm}`+
-    /* 블록 사이 간격은 배치 계산(GAP)과 실제 렌더가 반드시 같은 값을 써야 한다 */
+    /* 블록 사이 간격은 배치 계산과 실제 렌더가 반드시 같은 값을 써야 한다.
+       장별로 다르게 준 경우는 그 장의 section 에 직접 얹는다 */
     `.blk+.blk{margin-top:${gapMM()}mm}`+
     /* 자체 줄간격을 가진 곳은 본문 줄간격에 비례해 따라간다 */
     `.calc{line-height:${(lh*1.1875).toFixed(3)}}`+
@@ -990,6 +1001,7 @@ function isKeep(el){
   return false;
 }
 
+let PGKEYS=[];                         // 장마다 그 장을 여는 줄의 key (페이지 설정이 붙는 자리)
 let _raf=null;
 function renderReport(){               // 입력 중 과도한 재계산을 막기 위해 프레임 단위로 묶는다
   if(_raf)cancelAnimationFrame(_raf);
@@ -1001,7 +1013,6 @@ function buildReport(){
   collectBlocks();
   const blocks=BLK;
   const brk=new Set(S.doc.breaks||[]);
-  const BUDGET=budgetPx(), FULL=usableMM()*MMPX, GAP=gapMM()*MMPX;
   const sp=S.doc.spacers||{}, SPACE=SPACE_MM*MMPX;
   const spaceOf=k=>Math.max(SPACE_MIN,Math.min(SPACE_MAX,Math.round(+sp[k]||0)));
 
@@ -1035,33 +1046,48 @@ function buildReport(){
   mez.innerHTML="";
   items.forEach(it=>{it.space=spaceOf(it.key);it.h+=it.space*SPACE});
 
-  /* 2) 한 장에 들어가는 만큼 채워 넣는다 */
-  const pages=[];let cur=[],curH=0,curKey=null;
+  /* 2) 한 장에 들어가는 만큼 채워 넣는다.
+     장마다 다른 지면을 쓸 수 있다. 그 설정은 장 번호가 아니라 **그 장의 첫 줄**에
+     매달아 둔다 — 번호에 매달면 위쪽에서 한 줄만 늘어도 남의 장 설정이 되어 버린다.
+     여기서 바꿀 수 있는 값(위·아래 여백, 쪽번호 자리, 측정 여유, 블록 간격)은
+     모두 본문 폭을 건드리지 않으므로, 이미 재 놓은 줄 높이를 그대로 쓸 수 있다. */
+  const OV=S.doc.pageset||{}, M=pageMargins();
+  const ovn=(o,k,def)=>{const v=o&&o[k];return (v!==""&&v!=null&&isFinite(+v))?+v:def};
+  const budgetOf=first=>{
+    const o=first?OV[first.key]:null;
+    const t=ovn(o,"여백상",M.t), bm=ovn(o,"여백하",M.b), pno=ovn(o,"쪽번호자리",pnoMM());
+    const use=Math.max(30,297-t-bm-pno);
+    return {t,b:bm,full:use*MMPX,
+            budget:Math.max(30,use-ovn(o,"여유",safeMM()))*MMPX,
+            gap:ovn(o,"블록간격",gapMM())*MMPX};
+  };
+  const pages=[];let cur=[],curH=0,curKey=null,curSet=budgetOf(null);
   const KEEP_MAX=45*MMPX;              // 다음 장으로 함께 넘길 제목류의 최대 높이
   const startPage=seed=>{              // seed 를 얹은 채로 새 장을 시작하고 높이를 다시 센다
-    cur=seed||[];curKey=null;curH=0;
+    cur=seed||[];curKey=null;curH=0;curSet=budgetOf(cur[0]||null);
     if(cur.length){
       curH=cur[0].headH;let prev=null;
-      cur.forEach(c=>{if(prev!==null&&prev!==c.b.key)curH+=GAP;curH+=c.h;prev=c.b.key});
+      cur.forEach(c=>{if(prev!==null&&prev!==c.b.key)curH+=curSet.gap;curH+=c.h;prev=c.b.key});
       curKey=cur[cur.length-1].b.key;
     }
   };
-  const flush=seed=>{if(cur.length)pages.push(cur);startPage(seed)};
+  const flush=seed=>{if(cur.length)pages.push({items:cur,set:curSet});startPage(seed)};
   items.forEach(it=>{
     const b=it.b;
     // 줄 단위 강제 나눔 : 이 줄에 표시가 있거나, 블록 첫 줄에 블록 단위 표시가 있을 때
     it.forced = brk.has(it.key) || (it.first&&brk.has(b.key)) || (it.first&&b.alone);
     if(cur.length&&it.forced)flush();
-    let gap=(cur.length&&curKey!==b.key)?GAP:0;
-    if(cur.length&&curH+gap+it.h>BUDGET){
+    let gap=(cur.length&&curKey!==b.key)?curSet.gap:0;
+    if(cur.length&&curH+gap+it.h>curSet.budget){
       /* 페이지 끝에 제목류만 남으면 다음 장으로 같이 넘긴다.
          넘긴 높이를 새 장에 바로 반영해야 그 장이 넘치지 않는다. */
       let k=cur.length,moveH=0;
       while(k>0&&cur[k-1].keep){moveH+=cur[k-1].h;k--}
       flush(k>0&&k<cur.length&&moveH<KEEP_MAX?cur.splice(k):null);
-      gap=(cur.length&&curKey!==b.key)?GAP:0;
+      gap=(cur.length&&curKey!==b.key)?curSet.gap:0;
     }
-    if(!cur.length){gap=0;curH=it.headH}          // 새 페이지 맨 위에는 머리말이 붙는다
+    /* 새 장의 첫 줄 — 이 줄이 그 장의 지면을 정한다 */
+    if(!cur.length){curSet=budgetOf(it);gap=0;curH=it.headH}
     curH+=gap+it.h;cur.push(it);curKey=b.key;
     if(b.alone)flush();
   });
@@ -1069,22 +1095,29 @@ function buildReport(){
 
   /* 3) 출력 — 같은 블록에서 온 연속 요소끼리 다시 묶는다 */
   let pn=0,h="";
+  PGKEYS=[];
   pages.forEach(pg=>{
-    const groups=[];
-    pg.forEach(it=>{
+    const its=pg.items, st=pg.set, groups=[];
+    its.forEach(it=>{
       const g=groups[groups.length-1];
       if(g&&g.b.key===it.b.key)g.items.push(it); else groups.push({b:it.b,items:[it]});
     });
-    const tot=pg.reduce((a,it)=>a+it.h,0)+groups[0].items[0].headH+(groups.length-1)*GAP;
-    const over=tot>FULL+1;
+    const tot=its.reduce((a,it)=>a+it.h,0)+groups[0].items[0].headH+(groups.length-1)*st.gap;
+    const over=tot>st.full+1;
     pn++;
-    h+=`<section class="page${over?" over":""}">`
+    const fk=its[0].key;                 // 이 장을 여는 줄 = 페이지 설정이 매달리는 자리
+    PGKEYS.push(fk);
+    const has=!!OV[fk], sel=S.selPageKey===fk;
+    const pad=(st.t!==M.t||st.b!==M.b)?` style="padding-top:${st.t}mm;padding-bottom:${st.b}mm"`:"";
+    h+=`<section class="page${over?" over":""}${has?" pgov":""}${sel?" pgsel":""}"${pad}>`
       +groups.map((g,gi)=>`<div class="blk">`
         +(gi===0?g.b.head:"")
         +g.items.map((it,ii)=>itemHtml(it,brk,gi===0&&ii===0)).join("")
         +`</div>`).join("")
-      +`<div class="pno">- ${pn} -</div></section>`;
-    if(over)pn+=Math.ceil(tot/FULL)-1;   // 한 장을 넘는 요소는 인쇄 시 여러 장이 된다
+      +`<div class="pno"${st.b!==M.b?` style="bottom:${st.b}mm"`:""}>- ${pn} -</div>`
+      +`<button class="pgctl" data-act="pgset" data-k="${fk}"`
+      +` title="${pn}쪽 — 이 장만 여백·간격을 따로 준다">⚙</button></section>`;
+    if(over)pn+=Math.ceil(tot/st.full)-1;   // 한 장을 넘는 요소는 인쇄 시 여러 장이 된다
   });
   $("#report").innerHTML=h;
 }
@@ -1479,15 +1512,58 @@ function Sel(label,path,opts){
   const v=getPath(path);
   return `<label class="f"><span>${label}</span><select data-path="${path}" data-live="1">${opts.map(o=>`<option value="${o}" ${o===v?"selected":""}>${o}</option>`).join("")}</select></label>`;
 }
+/* 선택한 장의 설정 그릇. 없으면(create) 만들어 준다 */
+function pgOv(create){
+  const k=S.selPageKey; if(!k)return null;
+  const ps=S.doc.pageset||(S.doc.pageset={});
+  if(!ps[k]&&create)ps[k]={};
+  return ps[k]||null;
+}
 function getPath(p){const a=p.split(".");
-  let o = a[0]==="doc"?S.doc : a[0]==="mat"?S.mats[S.selMat] : a[0]==="src"?S.srcs[S.selSrc] : null;
+  let o = a[0]==="doc"?S.doc : a[0]==="mat"?S.mats[S.selMat] : a[0]==="src"?S.srcs[S.selSrc]
+        : a[0]==="pgs"?(pgOv(false)||{}) : null;
   return o?o[a[1]]:null;}
 function setPath(p,val){const a=p.split(".");
-  let o = a[0]==="doc"?S.doc : a[0]==="mat"?S.mats[S.selMat] : a[0]==="src"?S.srcs[S.selSrc] : null;
-  if(o) o[a[1]]=val;}
+  let o = a[0]==="doc"?S.doc : a[0]==="mat"?S.mats[S.selMat] : a[0]==="src"?S.srcs[S.selSrc]
+        : a[0]==="pgs"?pgOv(true) : null;
+  if(!o)return;
+  /* 페이지 설정은 빈 칸이 곧 "문서 기본값을 따름" 이다. 0 과 섞이지 않게 지운다 */
+  if(a[0]==="pgs"&&(val===""||val==null))delete o[a[1]]; else o[a[1]]=val;}
 
 function renderPanes(){renderDocPane();renderMatPane();renderSrcPane();renderReport()}
+function openTab(name){
+  document.querySelectorAll(".tabs button").forEach(x=>x.classList.toggle("on",x.dataset.tab===name));
+  document.querySelectorAll(".tabpane").forEach(x=>x.classList.toggle("on",x.id==="pane-"+name));
+}
 
+/* 장 하나만 다른 지면을 쓰게 하는 칸. 비운 칸은 문서 기본값을 따른다.
+   ⚙ 를 눌러 장을 고르면 그 장을 여는 줄(key)이 S.selPageKey 가 된다. */
+function pageSetFieldset(){
+  const k=S.selPageKey, ps=S.doc.pageset||{}, n=Object.keys(ps).length;
+  if(!k)return `<fieldset><legend>페이지별 설정</legend>
+   <p class="hint">미리보기에서 장 위에 마우스를 올리면 오른쪽 위 모서리에 <b>⚙</b> 가 나타납니다.
+    누르면 <b>그 장만</b> 위·아래 여백과 쪽번호 자리·측정 여유·블록 간격을 따로 줄 수 있습니다.
+    한 장만 빠듯할 때 문서 전체를 건드리지 않고 그 장만 조이는 용도입니다.</p>
+   ${n?`<button class="mini" data-act="clrpg">페이지별 설정 모두 지우기 (${n}장)</button>`:""}</fieldset>`;
+  const M=pageMargins(), pn=PGKEYS.indexOf(k)+1, live=pn>0;
+  const ph=v=>`placeholder="${v} (기본)"`;
+  return `<fieldset><legend>이 페이지만 ${live?`— ${pn}쪽`:"— 쉬는 중"}</legend>
+   ${live?"":`<p class="hint" style="color:var(--red)">이 줄은 지금 어느 장의 첫 줄도 아닙니다.
+     위쪽 내용이 바뀌면서 밀린 것이라 설정이 적용되지 않고 있습니다. 값은 그대로 두었으니,
+     다시 그 줄이 장을 열게 되면 살아납니다.</p>`}
+   <div class="row">${F("위 여백 (mm)","pgs.여백상","number",'min="0" max="60" '+ph(M.t))}${F("아래 여백 (mm)","pgs.여백하","number",'min="0" max="60" '+ph(M.b))}</div>
+   <div class="row">${F("쪽번호 자리 (mm)","pgs.쪽번호자리","number",'min="0" max="20" '+ph(pnoMM()))}${F("측정 여유 (mm)","pgs.여유","number",'min="0" max="20" '+ph(safeMM()))}</div>
+   ${F("블록 간격 (mm)","pgs.블록간격","number",'min="0" max="30" '+ph(gapMM()))}
+   <p class="hint">비운 칸은 문서 기본값을 따릅니다. 좌·우 여백과 줄 간격·표 여백은 본문 폭과 줄 높이를
+    바꿔 버려서 여기에 없습니다 — 그건 문서 전체 설정에서만 바꿉니다.</p>
+   <p class="hint">이 설정은 장 번호가 아니라 <b>이 줄</b>에 붙어 있습니다. 위쪽에서 내용이 늘어 장이 밀려도
+    이 줄이 여는 장을 계속 따라갑니다.</p>
+   <div style="display:flex;gap:6px">
+    <button class="mini" data-act="pgclr">이 페이지 설정 지우기</button>
+    <button class="mini" data-act="pgnone">선택 해제</button>
+    ${n>1?`<button class="mini danger" data-act="clrpg">전부 지우기 (${n}장)</button>`:""}
+   </div></fieldset>`;
+}
 function renderDocPane(){
   $("#pane-doc").innerHTML=`
   <fieldset><legend>문서 정보</legend>
@@ -1524,6 +1600,7 @@ function renderDocPane(){
       <button class="mini" data-act="lay" data-v="10,5,8,4,1.75">여유 있게</button>
     </div>
   </fieldset>
+  ${pageSetFieldset()}
   <fieldset><legend>페이지 나눔</legend>
     <div style="display:flex;gap:6px;align-items:center">
       <button class="mini" data-act="clrbrk">나눔 해제</button>
@@ -1815,6 +1892,10 @@ document.addEventListener("click",e=>{
       if(nv)sp[k]=nv; else delete sp[k];
       renderDocPane();renderReport();}break;
     case"clrspc":S.doc.spacers={};renderDocPane();renderReport();break;
+    case"pgset":S.selPageKey=b.dataset.k;openTab("doc");renderDocPane();renderReport();break;
+    case"pgnone":S.selPageKey=null;renderDocPane();renderReport();break;
+    case"pgclr":{const ps=S.doc.pageset||{};delete ps[S.selPageKey];renderDocPane();renderReport();}break;
+    case"clrpg":S.doc.pageset={};S.selPageKey=null;renderDocPane();renderReport();break;
     case"clrbrk":S.doc.breaks=[];renderDocPane();renderReport();break;
     case"lay":{const p=String(v).split(",").map(Number);
       S.doc.쪽번호자리=p[0];S.doc.여유=p[1];S.doc.블록간격=p[2];S.doc.표여백=p[3];S.doc.줄간격=p[4];
@@ -1855,7 +1936,7 @@ $("#fileIn").addEventListener("change",ev=>{
   const f=ev.target.files[0];if(!f)return;
   const rd=new FileReader();
   rd.onload=()=>{try{const o=JSON.parse(rd.result);
-    Object.assign(S,{doc:o.doc,mats:o.mats,srcs:o.srcs,selMat:0,selSrc:0});
+    Object.assign(S,{doc:o.doc,mats:o.mats,srcs:o.srcs,selMat:0,selSrc:0,selPageKey:null});
     fillDocDefaults(S.doc);S.srcs.forEach(fillSrcDefaults);renderPanes();
   }catch(err){alert("파일을 읽을 수 없습니다: "+err.message)}};
   rd.readAsText(f);
