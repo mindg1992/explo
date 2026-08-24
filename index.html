@@ -120,12 +120,12 @@ table.pick tr.on td.lab{box-shadow:inset 3px 0 0 var(--mark)}
    컨트롤이 아래 줄까지 내려와 옆줄의 ✂ 를 잘못 누르게 된다.
    컨트롤은 줄 상자 밖(오른쪽 여백)에 있으므로 자기 자신에 마우스가 올라가도
    계속 보여야 한다. 줄 오른쪽 끝에 딱 붙여 중간에 끊기는 구간을 없앤다. */
-.itctl{position:absolute;top:50%;transform:translateY(-50%);right:-11mm;
-  opacity:0;transition:opacity .12s;display:flex;gap:3px;z-index:1}
+.itctl{position:absolute;top:50%;transform:translateY(-50%);right:-15mm;
+  opacity:0;transition:opacity .12s;display:flex;gap:2px;z-index:1}
 .spc{pointer-events:none}
 .it:hover>.itctl,.itctl:hover{opacity:1;z-index:6}
-.itctl button{width:19px;height:19px;padding:0;border:1px solid var(--rule);background:#fff;border-radius:4px;
-  cursor:pointer;font-size:11px;line-height:1;color:var(--ink-2);font-family:var(--ui)}
+.itctl button{width:17px;height:17px;padding:0;border:1px solid var(--rule);background:#fff;border-radius:4px;
+  cursor:pointer;font-size:10px;line-height:1;color:var(--ink-2);font-family:var(--ui)}
 .itctl button:hover{border-color:var(--blue);color:var(--blue);background:var(--blue-soft)}
 .itctl button.on{background:var(--mark);border-color:var(--mark);color:#241000;font-weight:700}
 .it.brk>.itctl,.it.spaced>.itctl{opacity:.55}
@@ -429,7 +429,9 @@ const S={
   doc:{회사:"",소재지:"",년월:"",작성자:"",
     개요:"인화성물질을 쓰는 검토대상 설비에 대한 폭발 위험 지역 구분에 대해서 산업안전보건규칙 제230조에 따른 '산업표준화법'과 참고 문헌으로, IEC 60079-10-1(2020), KOSHA Guide E-180-2020(가스폭발위험장소의 설정에 관한 기술지침)을 Reference로 적용하였음",
     물질비고:"",
-    여백상:18,여백하:14,여백좌:15,여백우:15,breaks:[],spacers:{}},
+    여백상:18,여백하:14,여백좌:15,여백우:15,
+    쪽번호자리:9,여유:4,블록간격:6,줄간격:1.6,표여백:3,
+    breaks:[],spacers:{},spcv:2},
   mats:[],srcs:[],selMat:0,selSrc:0
 };
 /* 예전에 저장한 설정 파일에는 아래 항목이 없으므로 기본값을 채운다 */
@@ -439,6 +441,11 @@ function fillDocDefaults(d){
   for(const k in MG){const v=+d[k];d[k]=(isFinite(v)&&v>=0&&v<=60)?v:MG[k]}
   if(!Array.isArray(d.breaks))d.breaks=[];
   if(!d.spacers||typeof d.spacers!=="object")d.spacers={};
+  /* 지면 미세조정 값 — 예전에는 코드에 박혀 있어 파일에 없다 */
+  const LAY={쪽번호자리:[9,0,20],여유:[4,0,20],블록간격:[6,0,30],줄간격:[1.6,1.2,2.2],표여백:[3,0,8]};
+  for(const k in LAY){const v=+d[k], q=LAY[k];d[k]=(isFinite(v)&&v>=q[1]&&v<=q[2])?v:q[0]}
+  /* 줄 띄우기 한 칸이 6mm 이던 시절의 파일. 2mm 단위로 옮기되 높이는 그대로 둔다 */
+  if(d.spcv!==2){for(const k in d.spacers)d.spacers[k]=Math.round((+d.spacers[k]||0)*3);d.spcv=2}
 }
 S.mats.push(newMat("톨루엔"));
 S.srcs.push(newSrc());
@@ -937,23 +944,41 @@ function pageAlone(inner,key){BLK.push({key:key||("b"+BLK.length),html:inner,hea
 function matOf(s){return S.mats.find(m=>m.id===s.matId)||S.mats[0]}
 
 const MMPX=96/25.4;                    // 1 mm 를 px 로
-const PAGE_GAP_MM=6;                   // 한 장 안에서 블록 사이 간격
 function mg(k,def){const v=+S.doc[k];return (isFinite(v)&&v>=0&&v<=60)?v:def}
 function pageMargins(){return {t:mg("여백상",18),b:mg("여백하",14),l:mg("여백좌",15),r:mg("여백우",15)}}
-const PNO_MM=9;                        // 쪽번호 자리 (본문 영역 맨 아래에서 떼어 둔다)
-const SPACE_MM=6;                      // 줄 띄우기 한 칸 높이
-const SAFE_MM=4;                       // 측정 오차 흡수용 여유. 0 이면 1mm 차이로 장이 갈릴 수 있다
+/* 아래 다섯은 예전에 상수로 박혀 있었다. 한 장에 한 줄이 더 들어가느냐가
+   이 값들에 걸리는 일이 많아 문서 설정으로 꺼냈다. */
+function lay(k,def,lo,hi){const v=+S.doc[k];return isFinite(v)?Math.max(lo,Math.min(hi,v)):def}
+function pnoMM(){return lay("쪽번호자리",9,0,20)}    // 쪽번호 자리 (본문 아래에서 떼어 둔다)
+function safeMM(){return lay("여유",4,0,20)}         // 측정 오차 흡수용. 0 이면 1mm 차이로 장이 갈린다
+function gapMM(){return lay("블록간격",6,0,30)}      // 한 장 안에서 블록 사이 간격
+function lineH(){return lay("줄간격",1.6,1.2,2.2)}
+function cellPad(){return Math.round(lay("표여백",3,0,8))}
+const SPACE_MM=2;                      // 줄 여백 한 칸. 음수면 위로 당긴다
+const SPACE_MIN=-6, SPACE_MAX=18;      // -12mm ~ +36mm
 function contentMM(){const m=pageMargins();return 297-m.t-m.b}   // 인쇄영역 높이
-function usableMM(){return Math.max(30,contentMM()-PNO_MM)}      // 본문이 실제로 쓰는 높이
-function budgetPx(){return Math.max(30,usableMM()-SAFE_MM)*MMPX}
+function usableMM(){return Math.max(30,contentMM()-pnoMM())}     // 본문이 실제로 쓰는 높이
+function budgetPx(){return Math.max(30,usableMM()-safeMM())*MMPX}
 /* 화면 미리보기와 인쇄가 같은 지면을 쓰도록 여백을 한 곳에서 만들어 넣는다. */
 function applyPageStyle(){
   const m=pageMargins(), el=$("#pgstyle"); if(!el)return;
+  const lh=lineH(), cp=cellPad();
   el.textContent=
-    `.page{padding:${m.t}mm ${m.r}mm ${m.b}mm ${m.l}mm}`+
-    /* 쪽번호는 본문 영역 맨 아래 가운데. 배치에서 PNO_MM 를 미리 떼어놨으므로 겹치지 않는다 */
+    `.page{padding:${m.t}mm ${m.r}mm ${m.b}mm ${m.l}mm;line-height:${lh}}`+
+    /* 쪽번호는 본문 영역 맨 아래 가운데. 배치에서 그 자리를 미리 떼어놨으므로 겹치지 않는다 */
     `.page .pno{left:${m.l}mm;right:${m.r}mm;bottom:${m.b}mm}`+
     `.cover{min-height:${usableMM()-6}mm}`+
+    /* 블록 사이 간격은 배치 계산(GAP)과 실제 렌더가 반드시 같은 값을 써야 한다 */
+    `.blk+.blk{margin-top:${gapMM()}mm}`+
+    /* 자체 줄간격을 가진 곳은 본문 줄간격에 비례해 따라간다 */
+    `.calc{line-height:${(lh*1.1875).toFixed(3)}}`+
+    `.dl,.sumbox .rgt{line-height:${(lh*1.0625).toFixed(3)}}`+
+    /* 표는 글자보다 칸 여백이 높이를 지배한다 — 여기가 가장 크게 줄어든다 */
+    `table.doc th,table.doc td{padding:${cp}px ${cp+1}px}`+
+    `table.doc.tiny th,table.doc.tiny td{padding:${Math.max(0,cp-1)}px}`+
+    `table.spec th,table.spec td{padding:${cp+1}px ${cp+3}px}`+
+    /* 줄 조정 버튼은 오른쪽 여백 안에 들어앉힌다 */
+    `.itctl{right:-${Math.max(m.r,15)}mm}`+
     `@media print{@page{size:A4;margin:0}}`;
 }
 /* 제목류는 뒤 내용과 떨어뜨리지 않는다(페이지 끝에 혼자 남지 않게) */
@@ -976,9 +1001,9 @@ function buildReport(){
   collectBlocks();
   const blocks=BLK;
   const brk=new Set(S.doc.breaks||[]);
-  const BUDGET=budgetPx(), FULL=usableMM()*MMPX, GAP=PAGE_GAP_MM*MMPX;
+  const BUDGET=budgetPx(), FULL=usableMM()*MMPX, GAP=gapMM()*MMPX;
   const sp=S.doc.spacers||{}, SPACE=SPACE_MM*MMPX;
-  const spaceOf=k=>Math.max(0,Math.min(6,+sp[k]||0));
+  const spaceOf=k=>Math.max(SPACE_MIN,Math.min(SPACE_MAX,Math.round(+sp[k]||0)));
 
   /* 1) 측정 — 블록을 이루는 요소 하나하나의 높이를 잰다 */
   let mez=$("#measure");
@@ -1063,19 +1088,24 @@ function buildReport(){
   });
   $("#report").innerHTML=h;
 }
-/* 줄 하나 = .it 한 칸. 오른쪽 여백의 ✂ 로 그 줄부터 새 페이지를 시작한다 */
+/* 줄 하나 = .it 한 칸. 오른쪽 여백의 ✂ 로 그 줄부터 새 페이지를 시작하고,
+   ↑ ↓ 로 그 줄 위 여백을 SPACE_MM 만큼씩 당기거나 띄운다.
+   당기기(음수)는 spacer 칸을 만들 수 없으므로 줄 자체를 위로 올린다. */
 function itemHtml(it,brk,atTop){
   const on=brk.has(it.key)||(it.first&&brk.has(it.b.key));
   const k=brk.has(it.b.key)&&it.first?it.b.key:it.key;   // 예전 블록 단위 표시도 그대로 해제되게
-  const sp=it.space||0;
-  return `<div class="it${on?" brk":""}${sp?" spaced":""}${atTop?" top":""}">`
-    +(sp?`<div class="spc" style="height:${sp*SPACE_MM}mm"></div>`:"")
+  const sp=it.space||0, mm=sp*SPACE_MM, now=(mm>0?"+":"")+mm+"mm";
+  return `<div class="it${on?" brk":""}${sp?" spaced":""}${atTop?" top":""}"`
+    +(sp<0?` style="margin-top:${mm}mm"`:"")+`>`
+    +(sp>0?`<div class="spc" style="height:${mm}mm"></div>`:"")
     +it.html
     +`<span class="itctl">`
     +`<button data-act="brk" data-k="${k}" class="${on?"on":""}"`
     +` title="${on?"이 줄의 페이지 나눔 해제":"이 줄부터 새 페이지에서 시작"}">${on?"⏏":"✂"}</button>`
-    +`<button data-act="spc" data-k="${it.key}" class="${sp?"on":""}"`
-    +` title="이 줄 위를 한 칸 띄웁니다 (${sp}/6, 6 다음엔 0)">↕</button>`
+    +`<button data-act="spc" data-k="${it.key}" data-d="-1" class="${sp<0?"on":""}"`
+    +` title="이 줄 위를 ${SPACE_MM}mm 당깁니다 (현재 ${now})">↑</button>`
+    +`<button data-act="spc" data-k="${it.key}" data-d="1" class="${sp>0?"on":""}"`
+    +` title="이 줄 위를 ${SPACE_MM}mm 띄웁니다 (현재 ${now})">↓</button>`
     +`</span></div>`;
 }
 
@@ -1470,7 +1500,7 @@ function renderDocPane(){
   <fieldset><legend>용지 여백 (A4)</legend>
     <div class="row">${F("위 여백 (mm)","doc.여백상","number",'min="0" max="60"')}${F("아래 여백 (mm)","doc.여백하","number",'min="0" max="60"')}</div>
     <div class="row">${F("왼쪽 여백 (mm)","doc.여백좌","number",'min="0" max="60"')}${F("오른쪽 여백 (mm)","doc.여백우","number",'min="0" max="60"')}</div>
-    <p class="hint">본문 영역 <b>${210-mg("여백좌",15)-mg("여백우",15)} × ${usableMM()} mm</b> (쪽번호 자리 ${PNO_MM}mm 제외).
+    <p class="hint">본문 영역 <b>${210-mg("여백좌",15)-mg("여백우",15)} × ${usableMM()} mm</b> (쪽번호 자리 ${pnoMM()}mm 제외).
      미리보기와 인쇄물이 같은 지면을 씁니다.</p>
     <div style="display:flex;gap:6px">
       <button class="mini" data-act="mg" data-v="18,14,15,15">기본값</button>
@@ -1478,15 +1508,33 @@ function renderDocPane(){
       <button class="mini" data-act="mg" data-v="12,12,12,12">빽빽하게 12mm</button>
     </div>
   </fieldset>
+  <fieldset><legend>지면 미세조정 <em>— 한 장에 들어가는 양</em></legend>
+    <div class="row">${F("쪽번호 자리 (mm)","doc.쪽번호자리","number",'min="0" max="20" step="1"')}${F("측정 여유 (mm)","doc.여유","number",'min="0" max="20" step="1"')}</div>
+    <div class="row">${F("블록 간격 (mm)","doc.블록간격","number",'min="0" max="30" step="1"')}${F("표 칸 여백 (px)","doc.표여백","number",'min="0" max="8" step="1"')}</div>
+    ${F("본문 줄 간격","doc.줄간격","number",'min="1.2" max="2.2" step="0.05"')}
+    <p class="hint">매 장에서 <b>${pnoMM()+safeMM()}mm</b> 를 본문에 앞서 떼어 둡니다 — 쪽번호 자리와 측정 여유입니다.
+     한 줄 차이로 장이 갈릴 때 여기를 1~2mm 줄이면 대개 들어갑니다.
+     <b>측정 여유</b>를 0 으로 두면 재는 값과 인쇄가 1mm 어긋나 마지막 줄이 잘릴 수 있으니 2mm 아래로는 권하지 않습니다.
+     <b>쪽번호 자리</b>를 0 으로 두면 쪽번호가 마지막 줄과 겹칩니다.</p>
+    <p class="hint"><b>표 칸 여백</b>은 표가 많은 이 계산서에서 가장 크게 듣는 손잡이입니다 —
+     1px 만 줄여도 행이 20개인 표에서 10mm 넘게 줄어듭니다.</p>
+    <div style="display:flex;gap:6px">
+      <button class="mini" data-act="lay" data-v="9,4,6,3,1.6">기본값</button>
+      <button class="mini" data-act="lay" data-v="7,2,4,2,1.45">한 장에 더 넣기</button>
+      <button class="mini" data-act="lay" data-v="10,5,8,4,1.75">여유 있게</button>
+    </div>
+  </fieldset>
   <fieldset><legend>페이지 나눔</legend>
     <div style="display:flex;gap:6px;align-items:center">
       <button class="mini" data-act="clrbrk">나눔 해제</button>
-      <button class="mini" data-act="clrspc">줄 띄우기 해제</button>
-      <span style="font-size:11px;color:var(--ink-3)">나눔 ${(S.doc.breaks||[]).length} · 띄움 ${Object.keys(S.doc.spacers||{}).length}</span>
+      <button class="mini" data-act="clrspc">줄 여백 해제</button>
+      <span style="font-size:11px;color:var(--ink-3)">나눔 ${(S.doc.breaks||[]).length} · 여백조정 ${Object.keys(S.doc.spacers||{}).length}</span>
     </div>
-    <p class="hint" style="margin-top:8px">미리보기에서 줄 위에 마우스를 올리면 오른쪽 여백에 <b>✂</b> 가 나타납니다.
-     <b>✂</b> 는 그 줄부터 새 페이지에서 시작하고(주황 점선 표시), <b>↕</b> 는 그 줄 위를 한 칸(${SPACE_MM}mm)씩 띄웁니다.
-     ↕ 를 계속 누르면 6칸까지 늘었다가 0으로 돌아갑니다.</p>
+    <p class="hint" style="margin-top:8px">미리보기에서 줄 위에 마우스를 올리면 오른쪽 여백에 단추 셋이 나타납니다.
+     <b>✂</b> 는 그 줄부터 새 페이지에서 시작하고(주황 점선 표시),
+     <b>↓</b> 는 그 줄 위를 ${SPACE_MM}mm 씩 띄우고 <b>↑</b> 는 ${SPACE_MM}mm 씩 <b>당깁니다</b>.
+     당기기가 있어서 "몇 mm 만 줄이면 한 줄이 더 들어가는데" 하는 경우를 그 자리에서 해결할 수 있습니다.
+     범위는 ${SPACE_MIN*SPACE_MM}mm ~ +${SPACE_MAX*SPACE_MM}mm 입니다.</p>
   </fieldset>
   <div class="readout"><h4>출력 순서</h4>
    <div style="font-size:11.5px;line-height:1.9;color:var(--ink-2)">
@@ -1761,11 +1809,16 @@ document.addEventListener("click",e=>{
       const i=S.doc.breaks.indexOf(k);
       if(i<0)S.doc.breaks.push(k); else S.doc.breaks.splice(i,1);
       renderDocPane();renderReport();}break;
-    case"spc":{const k=b.dataset.k;const sp=S.doc.spacers||(S.doc.spacers={});
-      sp[k]=((+sp[k]||0)+1)%7; if(!sp[k])delete sp[k];
+    case"spc":{const k=b.dataset.k, d=+b.dataset.d||1;
+      const sp=S.doc.spacers||(S.doc.spacers={});
+      const nv=Math.max(SPACE_MIN,Math.min(SPACE_MAX,(+sp[k]||0)+d));
+      if(nv)sp[k]=nv; else delete sp[k];
       renderDocPane();renderReport();}break;
     case"clrspc":S.doc.spacers={};renderDocPane();renderReport();break;
     case"clrbrk":S.doc.breaks=[];renderDocPane();renderReport();break;
+    case"lay":{const p=String(v).split(",").map(Number);
+      S.doc.쪽번호자리=p[0];S.doc.여유=p[1];S.doc.블록간격=p[2];S.doc.표여백=p[3];S.doc.줄간격=p[4];
+      renderDocPane();renderReport();}break;
     case"mg":{const p=String(v).split(",").map(Number);
       S.doc.여백상=p[0];S.doc.여백하=p[1];S.doc.여백좌=p[2];S.doc.여백우=p[3];
       renderDocPane();renderReport();}break;
