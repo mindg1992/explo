@@ -982,7 +982,7 @@ function tblK(sel,click,cls){
   /* 폭을 px 로 묶어 두면 계산서(폭 100%)에서 내용칸이 남는 자리를 다 가져가고
      값칸은 52px 에 갇힌다. 비율로 주어 어느 폭에서든 같은 배분이 되게 한다. */
   let h=`<table class="${cls||"pick"}">
-   <colgroup><col style="width:8%"><col><col style="width:14%"></colgroup>
+   <colgroup><col style="width:8%"><col><col style="width:20%"></colgroup>
    <tr><th>No</th><th>내 용</th><th>값</th></tr>`;
   K_ROWS.forEach(r=>{
     const on=Math.abs(+r[2]-+sel)<1e-9;
