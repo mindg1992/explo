@@ -157,6 +157,8 @@ h4.eq{font-size:10.5pt;font-weight:700;margin:12px 0 4px}
 h4.eq::before{content:"∎ ";}
 .page p{margin:3px 0}
 .ind{padding-left:14px}.ind2{padding-left:28px}.ind3{padding-left:42px}
+.hang{text-indent:-1.25em;padding-left:calc(28px + 1.25em)}
+.hang2{text-indent:-3.4em;padding-left:calc(28px + 3.4em)}
 .blue{color:#1546a0}.orange{color:#e2620d;font-weight:700}.uline{text-decoration:underline}
 .item{margin:10px 0 4px;font-weight:700}
 .itemhd{color:#1546a0}
@@ -377,17 +379,33 @@ const NOTES={
   "ext-low"  :"&lt;부록 3&gt; 1.2 (3)",
   "low-one"  :"&lt;부록 2&gt; 3.3 (4)",
   "rel-def"  :"본문 3 및 &lt;부록 1&gt; 1.2 ~ 1.4",
+  "dil-def"  :"본문 6.5.3 (5)",
+  "avail-def":"&lt;부록 2&gt; 2.7.1 (1)",
   "hole-tbl" :"&lt;부록 1&gt; 4 &lt;표 1&gt;",
   "uw-tbl"   :"&lt;부록 2&gt; 2.4 &lt;표 1&gt;",
   "zone-tbl" :"&lt;부록 3&gt; 1.1 (3) &lt;표 1&gt;",
   "ds1"      :"본문 9.1 &lt;표 2&gt;",
   "ds2"      :"본문 9.1 &lt;표 3&gt;",
+  "temp-cls" :{own:"KS C IEC 60079-14"},
   "flash-ex" :"&lt;부록 3&gt; 2.2.1 (1)",
   "given-ex" :"&lt;부록 3&gt; 2.2.1 (3)"
 };
 /* 본문에 심는 자리표. 숫자는 장이 확정된 뒤 렌더에서 끼운다 */
 function fn(id){return `<sup class="fnm" data-fn="${id}"></sup>`}
-function noteText(id,first){return (first?GUIDE_FULL+" ":"같은 지침 ")+NOTES[id]}
+function noteOwn(id){const v=NOTES[id];return (v&&v.own)||null}
+function noteText(id,firstGuide){
+  const own=noteOwn(id);
+  return own?own:((firstGuide?GUIDE_FULL+" ":"같은 지침 ")+NOTES[id]);
+}
+/* 목록 순서대로 각주 문안을 만든다. 지침 이름은 처음 나오는 지침 각주 하나에만 붙는다 */
+function noteLines(list){
+  let named=false;
+  return list.map(id=>{
+    const own=noteOwn(id), t=noteText(id,!own&&!named);
+    if(!own)named=true;
+    return t;
+  });
+}
 
 /* 범위 곡선 세 가지 — 지침 <부록 3> 1.2 (2) 가·나·다 의 구분 그대로.
    고르는 자리에 원문을 붙여 두어야 나중에 왜 그 곡선인지 되짚을 수 있다. */
@@ -1171,8 +1189,16 @@ function buildReport(){
     while((mm=re.exec(it.html)))if(NOTES[mm[1]]&&it.notes.indexOf(mm[1])<0)it.notes.push(mm[1]);
   });
   /* 각주 n 개가 차지하는 높이. 첫 줄만 긴 꼴을 쓴다 */
-  const footH=list=>list.length
-    ? FHEAD+list.reduce((a,id,i)=>a+(i===0?FH[id].first:FH[id].rest),0) : 0;
+  const footH=list=>{
+    if(!list.length)return 0;
+    let named=false,h=FHEAD;
+    list.forEach(id=>{
+      const own=noteOwn(id);
+      h+=(!own&&!named)?FH[id].first:FH[id].rest;
+      if(!own)named=true;
+    });
+    return h;
+  };
 
   /* 2) 한 장에 들어가는 만큼 채워 넣는다.
      장마다 다른 지면을 쓸 수 있다. 그 설정은 장 번호가 아니라 **그 장의 첫 줄**에
@@ -1252,7 +1278,7 @@ function buildReport(){
     h+=`<section class="page${over?" over":""}${has?" pgov":""}${sel?" pgsel":""}"${pad}>`
       +body
       +(nl.length?`<div class="fnotes" style="left:${M.l}mm;right:${M.r}mm;bottom:${st.b+st.pnomm}mm">`
-        +nl.map((id,i)=>`<div>${i+1}) ${noteText(id,i===0)}</div>`).join("")+`</div>`:"")
+        +noteLines(nl).map((t,i)=>`<div>${i+1}) ${t}</div>`).join("")+`</div>`:"")
       +`<div class="pno"${st.b!==M.b?` style="bottom:${st.b}mm"`:""}>- ${pn} -</div>`
       +`<button class="pgctl" data-act="pgset" data-k="${fk}"`
       +` title="${pn}쪽 — 이 장만 여백·간격을 따로 준다">⚙</button></section>`;
@@ -1296,23 +1322,23 @@ function collectBlocks(){
   page(`<p class="ind"><b>2) 누출구멍 크기 및 누출원 반경</b></p>
    <p class="ind2">누출구멍의 반경은 인화성 물질의 누출률과 폭발위험장소의 형태 및 범위를 결정한다.</p>
    <figure><figcaption>&lt;표 1&gt; 2차누출등급의 누출구멍 단면적(권고)${fn("hole-tbl")}</figcaption>${tblHole(-1,false,"doc tiny")}</figure>
-   <p class="ind"><b>3) 희석등급</b></p>
-   <p class="ind2">① <b>고희석</b>(High Dilution) 누출원 근처에서의 농도를 순간적으로 감소시키고 누출이 중단된 후, 사실상 지속되지 않는다.</p>
-   <p class="ind2">② <b>중희석</b>(Medium Dilution) 누출이 진행되는 동안에는 누출농도를 안정된 상태로 제어할 수 있고, 누출이 중단된 후에는 더 이상 폭발성 가스분위기가 지속되지 않는다.</p>
-   <p class="ind2">③ <b>저희석</b>(Low Dilution) 누출이 진행되는 동안에 상당한 농도로 지속되고 누출이 정지된 후에도 인화성 분위기가 상당기간 동안 지속된다.</p>`,"doc-2");
+   <p class="ind"><b>3) 희석등급</b>${fn("dil-def")}</p>
+   <p class="ind2 hang">① <b>고희석</b>(High Dilution) 누출원 근처에서의 농도를 순간적으로 감소시키고 누출이 중단된 후, 사실상 지속되지 않는다.</p>
+   <p class="ind2 hang">② <b>중희석</b>(Medium Dilution) 누출이 진행되는 동안에는 누출농도를 안정된 상태로 제어할 수 있고, 누출이 중단된 후에는 더 이상 폭발성 가스분위기가 지속되지 않는다.</p>
+   <p class="ind2 hang">③ <b>저희석</b>(Low Dilution) 누출이 진행되는 동안에 상당한 농도로 지속되고 누출이 정지된 후에도 인화성 분위기가 상당기간 동안 지속된다.</p>`,"doc-2");
   /* 희석 그래프 + 환기이용도 + 범위 그래프 */
   page(`<figure><figcaption>&lt;그림 1&gt; 희석등급 평가용 그래프${fn("dil-chart")}</figcaption>${chartDilution(null)}</figure>
-   <p class="ind"><b>4) 환기이용도</b></p>
-   <p class="ind2">우수 : 환기가 실제적으로 지속되는 상태</p>
-   <p class="ind2">양호 : 환기의 정상작동이 지속됨이 예측되는 상태, 빈번하지 않는 단기간 중단은 허용된다.</p>
-   <p class="ind2">미흡 : 환기가 양호 또는 우수 기준을 충족하지 않지만, 장기간 중단이 발생하는 것으로 예상되지 않는 상태</p>
+   <p class="ind"><b>4) 환기이용도</b>${fn("avail-def")}</p>
+   <p class="ind2 hang2">우수 : 환기가 실제적으로 지속되는 상태</p>
+   <p class="ind2 hang2">양호 : 환기의 정상작동이 지속됨이 예측되는 상태, 빈번하지 않는 단기간 중단은 허용된다.</p>
+   <p class="ind2 hang2">미흡 : 환기가 양호 또는 우수 기준을 충족하지 않지만, 장기간 중단이 발생하는 것으로 예상되지 않는 상태</p>
    <figure><figcaption>&lt;그림 2&gt; 폭발위험장소의 범위(거리) 추정 그래프${fn("ext-chart")}</figcaption>${chartExtent(null)}</figure>`,"doc-3");
   /* 종별 표 + Temp class */
   page(`<p class="ind"><b>5) 폭발위험 장소의 종별의 추정</b></p>
    <p class="ind2">폭발위험장소의 구분은 폭발성 분위기의 생성빈도와 지속시간에 따라 다음과 같이 분류한다.</p>
    <figure><figcaption>&lt;표 1&gt; 누출 등급 및 환기유효성에 따른 폭발위험장소 설정${fn("zone-tbl")}</figcaption>${tblZone("","","",false)}</figure>
    <p class="ind"><b>6) Temp. class</b></p>
-   <p class="ind2">폭발가스 발화온도에 의한 분류(KS C IEC 60079-14)</p>
+   <p class="ind2">폭발가스 발화온도에 의한 분류${fn("temp-cls")}</p>
    ${["T1 : 450℃ 초과","T2 : 300℃ 초과","T3 : 200℃ 초과","T4 : 135℃ 초과","T5 : 100℃ 초과","T6 : 85℃ 초과"].map(t=>`<p class="ind3">${t}</p>`).join("")}`,"doc-4");
   /* 2. 계산식 */
   page(`<h2 class="sec">2. 누출특성 및 희석등급 계산식</h2>
