@@ -376,6 +376,12 @@ const NOTES={
   "ext-ne"   :"&lt;부록 3&gt; &lt;그림 1&gt; 비고",
   "ext-low"  :"&lt;부록 3&gt; 1.2 (3)",
   "low-one"  :"&lt;부록 2&gt; 3.3 (4)",
+  "rel-def"  :"본문 3 및 &lt;부록 1&gt; 1.2 ~ 1.4",
+  "hole-tbl" :"&lt;부록 1&gt; 4 &lt;표 1&gt;",
+  "uw-tbl"   :"&lt;부록 2&gt; 2.4 &lt;표 1&gt;",
+  "zone-tbl" :"&lt;부록 3&gt; 1.1 (3) &lt;표 1&gt;",
+  "ds1"      :"본문 9.1 &lt;표 2&gt;",
+  "ds2"      :"본문 9.1 &lt;표 3&gt;",
   "flash-ex" :"&lt;부록 3&gt; 2.2.1 (1)",
   "given-ex" :"&lt;부록 3&gt; 2.2.1 (3)"
 };
@@ -1285,11 +1291,11 @@ function collectBlocks(){
   page(`<h2 class="sec">1. 개 요</h2>
    <p class="ind">${ph(d.회사,"(사업장명)")}의 ${esc(d.개요)}</p>
    <h3 class="sub">1.2 용어 정의</h3>
-   <p class="ind"><b>1) 누출등급</b></p>${tblRelDoc()}`,"doc-1");
+   <p class="ind"><b>1) 누출등급</b>${fn("rel-def")}</p>${tblRelDoc()}`,"doc-1");
   /* 2) 누출구멍 + 3) 희석등급 */
   page(`<p class="ind"><b>2) 누출구멍 크기 및 누출원 반경</b></p>
    <p class="ind2">누출구멍의 반경은 인화성 물질의 누출률과 폭발위험장소의 형태 및 범위를 결정한다.</p>
-   <figure><figcaption>&lt;표 1&gt; 2차누출등급의 누출구멍 단면적(권고)</figcaption>${tblHole(-1,false,"doc tiny")}</figure>
+   <figure><figcaption>&lt;표 1&gt; 2차누출등급의 누출구멍 단면적(권고)${fn("hole-tbl")}</figcaption>${tblHole(-1,false,"doc tiny")}</figure>
    <p class="ind"><b>3) 희석등급</b></p>
    <p class="ind2">① <b>고희석</b>(High Dilution) 누출원 근처에서의 농도를 순간적으로 감소시키고 누출이 중단된 후, 사실상 지속되지 않는다.</p>
    <p class="ind2">② <b>중희석</b>(Medium Dilution) 누출이 진행되는 동안에는 누출농도를 안정된 상태로 제어할 수 있고, 누출이 중단된 후에는 더 이상 폭발성 가스분위기가 지속되지 않는다.</p>
@@ -1304,7 +1310,7 @@ function collectBlocks(){
   /* 종별 표 + Temp class */
   page(`<p class="ind"><b>5) 폭발위험 장소의 종별의 추정</b></p>
    <p class="ind2">폭발위험장소의 구분은 폭발성 분위기의 생성빈도와 지속시간에 따라 다음과 같이 분류한다.</p>
-   <figure><figcaption>&lt;표 1&gt; 누출 등급 및 환기유효성에 따른 폭발위험장소 설정</figcaption>${tblZone("","","",false)}</figure>
+   <figure><figcaption>&lt;표 1&gt; 누출 등급 및 환기유효성에 따른 폭발위험장소 설정${fn("zone-tbl")}</figcaption>${tblZone("","","",false)}</figure>
    <p class="ind"><b>6) Temp. class</b></p>
    <p class="ind2">폭발가스 발화온도에 의한 분류(KS C IEC 60079-14)</p>
    ${["T1 : 450℃ 초과","T2 : 300℃ 초과","T3 : 200℃ 초과","T4 : 135℃ 초과","T5 : 100℃ 초과","T6 : 85℃ 초과"].map(t=>`<p class="ind3">${t}</p>`).join("")}`,"doc-4");
@@ -1325,11 +1331,11 @@ function collectBlocks(){
   page(`<h2 class="sec">4. 폭발 위험 장소 구분 데이터 시트</h2>
    <h3 class="sub">4.1 위험성물질의 목록 및 특성</h3>
    ${String(d.물질비고||"").trim()?`<p class="ind" style="font-size:9.5pt">1) ${esc(d.물질비고)}</p>`:""}
-   <p style="font-size:9pt;margin-top:10px">Explosion Area Classification Data Sheet – Part 1 : Flammable material list and Characteristics</p>
+   <p style="font-size:9pt;margin-top:10px">Explosion Area Classification Data Sheet – Part 1 : Flammable material list and Characteristics${fn("ds1")}</p>
    <p style="font-size:9pt">Plant Name : ${ph(d.회사,"(사업장명)")}<br>Plant Location : ${ph(d.소재지,"(소재지)")}</p>
    ${part1Table()}`,"doc-8");
   page(`<h3 class="sub">4.2 누출원 목록</h3>
-   <p style="font-size:9pt">Explosion Area Classification Data Sheet – Part 2 : List of source of release</p>
+   <p style="font-size:9pt">Explosion Area Classification Data Sheet – Part 2 : List of source of release${fn("ds2")}</p>
    <p style="font-size:9pt">Plant Name : ${ph(d.회사,"(사업장명)")}<br>Plant Location : ${ph(d.소재지,"(소재지)")}</p>
    ${part2Table()}
    <div style="font-size:8.5pt;margin-top:6px;line-height:1.6">
@@ -1495,7 +1501,7 @@ function srcPages(s,idx){
         &nbsp;&nbsp;&nbsp;&nbsp;단면적 = <i>L</i> × <i>B</i> = ${num(+s.배경L,4)} × ${num(+s.배경B,4)} = ${num(r.단면,4)} m²<br>
         <span class="arrow">→ <i>u<sub>w</sub></i> = <i>Q<sub>a</sub></i> / (<i>L</i> × <i>B</i>) = ${num(r.Qa,4)} / ${num(r.단면,4)} = <span class="res">${num(r.uw,3)} m/s</span></span></div>
         <p style="font-size:9.5pt" class="ind">근거 : 옥내 환기속도는 공기유량을 기류에 수직인 단면적으로 나누어 산출한다.${fn("uw-area")}</p>`
-     : `<figure><figcaption>&lt;표 1&gt; 옥외 환기속도(u<sub>w</sub>)</figcaption>${tblUwDoc(s.uw,s.uwcell,s.uw옥내)}</figure>
+     : `<figure><figcaption>&lt;표 1&gt; 옥외 환기속도(u<sub>w</sub>)${fn("uw-tbl")}</figcaption>${tblUwDoc(s.uw,s.uwcell,s.uw옥내)}</figure>
         ${String(s.uw근거||"").trim()?`<p style="font-size:9.5pt" class="ind">근거 : ${esc(s.uw근거)}</p>`:""}`}
    <p class="item">${N()} 환기이용도 : <span class="orange">${esc(s.이용도==="직접입력"?s.이용도직접:s.이용도)}</span></p>
    <p class="ind2" style="font-size:9.5pt">(${r.이용도} : ${({"우수":"환기가 실제적으로 지속되는 상태","양호":"환기의 정상작동이 지속됨이 예측되는 상태, 빈번하지 않는 단기간 중단은 허용된다.","미흡":"환기가 양호 또는 우수 기준을 충족하지 않지만, 장기간 중단이 예상되지 않는 상태"})[r.이용도]})</p>`,K("a"));
@@ -1506,7 +1512,7 @@ function srcPages(s,idx){
     const 이차=s.등급==="2차";
     page(`<p class="item">${N()} ${이차?"2차 누출등급에서의 ":""}누출 구멍 단면적 : <span class="orange">${s.S}mm²</span></p>
      ${이차
-       ?`<figure><figcaption>&lt;표 1&gt; 2차누출등급의 누출구멍 단면적(권고)</figcaption>${tblHole(s.S,false,"doc tiny",s.Scell)}</figure>`
+       ?`<figure><figcaption>&lt;표 1&gt; 2차누출등급의 누출구멍 단면적(권고)${fn("hole-tbl")}</figcaption>${tblHole(s.S,false,"doc tiny",s.Scell)}</figure>`
        :`<p class="ind2" style="font-size:9.5pt;color:#1546a0">* 지침에 따라 ${esc(s.등급)} 누출등급에서 누출구멍 크기는 누출 오리피스(예: 상대적으로 예측 가능한 조건하에서 가스가 누출되는 다양한 통기구와 브리더밸브 등)의 형태와 크기에 따라 정해진다. &lt;표 1&gt;은 2차 누출등급에만 적용되므로 인용하지 않는다.</p>`}
      ${String(s.S근거||"").trim()?`<p class="ind" style="font-size:9.5pt">적용근거 : ${esc(s.S근거)}</p>`:""}`,K("b"));
   }
@@ -1545,7 +1551,7 @@ function srcPages(s,idx){
    ${r.msg.length?`<div style="border-left:3px solid #e2620d;padding:4px 8px;font-size:9pt;margin-top:8px">${r.msg.map(x=>"※ "+x).join("<br>")}</div>`:""}`,K("e"));
   /* 블록 F : 종별 판정 */
   page(`<p class="item">${N()} 폭발위험장소의 종별 판정표에 따라 <span class="orange">${r.zone==="비위험"?"비위험 장소":r.zone+" 장소"}</span>이다.</p>
-   <figure><figcaption>&lt;표 1&gt; 누출 등급 및 환기유효성에 따른 폭발위험장소 설정</figcaption>${tblZone(s.등급,r.희석,r.이용도,true)}</figure>
+   <figure><figcaption>&lt;표 1&gt; 누출 등급 및 환기유효성에 따른 폭발위험장소 설정${fn("zone-tbl")}</figcaption>${tblZone(s.등급,r.희석,r.이용도,true)}</figure>
    <div class="sumbox"><div class="lft">
      <div>희석등급</div><div>${r.희석}</div>
      <div>가스종류</div><div>${+m.비중>=1?"무거운가스":"가벼운가스"}</div>
