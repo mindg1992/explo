@@ -395,6 +395,7 @@ function newSrc(n){
     k:1,k근거:"실험결과 또는 문헌자료에 폭발하한이 명확한 물질(단일 및 혼합물질)",
     uw:0.05,uw근거:"옥내의 경우 최소 공기속도 0.05 m/s 를 가정(<표 1> 비고)",uwcell:"",uw옥내:true,
     이용도:"미흡",이용도직접:"",이용도적용:"미흡",
+    환기형태:"auto",
     누출형태:"무거운가스",
     희석모드:"auto",희석수동:"중희석",희석근거:"설비특성상",
     범위모드:"auto",범위수동:"",수평:"",수직:"",
@@ -406,6 +407,7 @@ function newSrc(n){
 function fillSrcDefaults(s){
   if(!s)return;
   if(s.Wg직접==null)s.Wg직접="";
+  if(s.환기형태==null)s.환기형태="auto";
   if(s.추정문구==null)s.추정문구="";
   if(s.Fv==null)s.Fv="";
   if(s.PopUnit==null){
@@ -1220,6 +1222,14 @@ function part1Table(){
     <td>${esc(m.비고||("Cas no. "+m.CAS))}</td></tr>`;});
   return h+`</table>`;
 }
+/* 환기형태(N/A/AG/AL) — 4.2 목록표 d) 주석과 설비별 표에 함께 실린다.
+   "auto" 는 옥내=A, 옥외=N 이라는 통상적인 가정일 뿐이라, 자연환기 옥내처럼
+   가정이 안 맞는 현장은 코드를 직접 골라 쓴다. */
+const VENT_TYPES={auto:"위치 따라 자동(옥내 A / 옥외 N)",N:"N — 자연환기",A:"A — 강제환기",AG:"AG — 강제 전체환기",AL:"AL — 국소배기"};
+function ventCode(s){
+  const v=s.환기형태;
+  return (v&&v!=="auto"&&VENT_TYPES[v]) ? v : (s.위치==="옥내"?"A":"N");
+}
 function part2Table(){
   let h=`<table class="doc tiny"><tr>
   <th rowspan="2">NO.</th><th colspan="3">누출원</th><th colspan="5">인화성 물질</th><th colspan="4">환기</th><th colspan="3">폭발위험장소</th><th rowspan="2">비고</th></tr>
@@ -1232,7 +1242,7 @@ function part2Table(){
     const amt=r.mode==="liquid"&&s.poolMode==="tank"?`${num(r.Qg,3)}<br>(m³/s)`:num(r.mode==="liquid"?r.W:r.Wg,3);
     h+=`<tr><td>${i+1}</td><td>${esc(s.설비명)}</td><td>${esc(s.위치)}</td><td>${gr}</td><td>${amt}</td><td>${num(r.C,2)}</td>
     <td>${S.mats.indexOf(m)+1}</td><td>${s.Top==25?"AMB":s.Top}</td><td>${esc(popLabel(s))}</td>
-    <td>${r.code}</td><td>${s.위치==="옥내"?"A":"N"}</td><td>${r.희석}</td><td>${ut}</td>
+    <td>${r.code}</td><td>${ventCode(s)}</td><td>${r.희석}</td><td>${ut}</td>
     <td>${r.zone}</td><td>${m1(r.수평)}</td><td>${m1(r.수직)}</td><td>${esc(s.비고)}</td></tr>`;});
   return h+`</table>`;
 }
@@ -1274,7 +1284,7 @@ function srcPages(s,idx){
    <tr><td class="k">Leakage<br>cross-sectional area</td><td>${trim((+s.S/1e6).toFixed(9))} m²</td><td class="k">Operating temperature</td><td>${s.Top} ℃</td></tr>
    <tr><td class="k">Source of release</td><td>${ph(s.누출원,"-")}<br><span style="font-size:8pt">(${esc(s.srcType)})</span></td><td class="k">Operating pressure</td><td>${esc(popLabel(s))}</td></tr>
    <tr><td class="k">Lower explosion limit(LEL)</td><td>${m.LFL} %</td><td class="k">Ventilation utilization<br>(G(우수), F(양호), P(미흡))</td><td>${({"우수":"G","양호":"F","미흡":"P"})[r.이용도]||"P"}</td></tr>
-   <tr><td class="k">LEL Safety factor (k)</td><td>${s.k}<br><span style="font-size:8pt">(k=${s.k}: ${esc(s.k근거)})</span></td><td class="k">Ventilation type<br>(N(자연환기), A(강제환기))</td><td>${s.위치==="옥내"?"A":"N"}</td></tr>
+   <tr><td class="k">LEL Safety factor (k)</td><td>${s.k}<br><span style="font-size:8pt">(k=${s.k}: ${esc(s.k근거)})</span></td><td class="k">Ventilation type<br>(N(자연환기), A(강제환기))</td><td>${ventCode(s)}</td></tr>
    <tr><td class="k">누출계수(Cd)</td><td>${s.Cd}${String(s.Cd근거||"").trim()?`<br><span style="font-size:8pt">(${esc(s.Cd근거)})</span>`:""}</td><td class="k">누출등급</td><td>${s.등급}</td></tr></table>
    ${String(s.등급근거||"").trim()?`<p class="ind" style="font-size:9.5pt">누출등급 판정근거 : ${esc(s.등급근거)}</p>`:""}
    <p style="font-size:9.5pt;color:#1546a0;font-weight:700;margin-top:8px">∎ 안전 계수 결정 (K)</p>
@@ -1767,6 +1777,11 @@ function renderSrcPane(){
   </fieldset>`;
 
   h+=`<fieldset><legend>⑤ 환기이용도 · 희석등급</legend>
+   <label class="f"><span>환기형태 <em>(4.2 누출원 목록 d)</em></span><select data-path="src.환기형태" data-live="1">
+    ${Object.keys(VENT_TYPES).map(k=>`<option value="${k}" ${k===(s.환기형태||"auto")?"selected":""}>${VENT_TYPES[k]}</option>`).join("")}</select></label>
+   <p class="hint">4.2 누출원 목록의 <b>환기 &gt; 형태</b> 칸과 설비별 <b>Ventilation type</b> 칸에 실립니다.
+    자동은 옥내를 A(강제환기)로 보는 가정이라, 옥내 자연환기처럼 맞지 않는 곳은 직접 고르세요.
+    현재 표기 : <b>${ventCode(s)}</b></p>
    ${Sel("환기이용도","src.이용도",["우수","양호","미흡","직접입력"])}
    ${s.이용도==="직접입력"?`${F("표기할 문구","src.이용도직접")}${Sel("판정표 적용 등급","src.이용도적용",["우수","양호","미흡"])}`:""}
    ${Sel("희석등급 판정","src.희석모드",["auto","manual"]).replace(">auto<",">차트 자동판정<").replace(">manual<",">수동 지정<")}
