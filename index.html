@@ -175,7 +175,7 @@ table.doc td.l{text-align:left}
 table.doc .note{font-size:8pt;text-align:left;line-height:1.35}
 table.doc.tiny{font-size:7.3pt}
 table.doc.tiny th,table.doc.tiny td{padding:2px}
-table.spec{width:100%;border-collapse:collapse;font-size:9.5pt;margin:6px 0}
+table.spec{width:100%;border-collapse:collapse;font-size:9.5pt;margin:6px 0;table-layout:fixed}
 table.spec th,table.spec td{border:1px solid #333;padding:4px 6px;text-align:center}
 table.spec th{background:#d9e2f3;font-weight:700;font-size:10.5pt}
 table.spec td.k{background:#fff;font-weight:600}
@@ -979,7 +979,11 @@ function tblHole(sel,click,cls,cell){
   return h+`</table>`;
 }
 function tblK(sel,click,cls){
-  let h=`<table class="${cls||"pick"}"><tr><th style="width:36px">No</th><th>내 용</th><th style="width:52px">값</th></tr>`;
+  /* 폭을 px 로 묶어 두면 계산서(폭 100%)에서 내용칸이 남는 자리를 다 가져가고
+     값칸은 52px 에 갇힌다. 비율로 주어 어느 폭에서든 같은 배분이 되게 한다. */
+  let h=`<table class="${cls||"pick"}">
+   <colgroup><col style="width:8%"><col><col style="width:14%"></colgroup>
+   <tr><th>No</th><th>내 용</th><th>값</th></tr>`;
   K_ROWS.forEach(r=>{
     const on=Math.abs(+r[2]-+sel)<1e-9;
     h+=`<tr class="${click&&on?"on":""}"><td>${r[0]}</td><td class="lab ${!click&&on?"hl":""}" style="text-align:left">${r[1]}</td>
@@ -1511,7 +1515,9 @@ function srcPages(s,idx){
   page(`${idx===0?`<p style="font-size:10pt;margin-bottom:6px"><b>2) 폭발위험지역 계산결과</b></p>`:""}
    ${title}
    <p class="item">${N()} 물질특성 및 환기조건</p>
-   <table class="spec"><tr><th colspan="2">Characteristics of release</th><th colspan="2">Ventilation characteristics</th></tr>
+   <table class="spec">
+   <colgroup><col style="width:23%"><col style="width:27%"><col style="width:23%"><col style="width:27%"></colgroup>
+   <tr><th colspan="2">Characteristics of release</th><th colspan="2">Ventilation characteristics</th></tr>
    <tr><td class="k">Material</td><td>${esc(m.명칭==="톨루엔"?"Toluene":m.명칭)}</td><td class="k">Location</td><td>${s.위치==="옥내"?"indoor":"outdoor"}</td></tr>
    <tr><td class="k">Phase</td><td>${r.code}</td><td class="k">Ventilation speed</td><td>${num(r.uw,3)} m/s</td></tr>
    <tr><td class="k">Molecular mass</td><td>${m.M} kg/kmol</td><td class="k">Ambient temperature</td><td>${s.Ta} ℃</td></tr>
