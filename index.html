@@ -1049,7 +1049,8 @@ function applyPageStyle(){
     `.page .pno{left:${m.l}mm;right:${m.r}mm;bottom:${m.b}mm}`+
     `.cover{min-height:${usableMM()-6}mm}`+
     /* 블록 사이 간격은 배치 계산과 실제 렌더가 반드시 같은 값을 써야 한다.
-       장별로 다르게 준 경우는 그 장의 section 에 직접 얹는다 */
+       이 규칙은 문서 기본값이고, 장마다 다르게 준 값은 렌더에서 그 블록에 직접 얹는다
+       (여기서만 정하면 장별 설정이 예산에서만 빠지고 화면에는 안 그려진다) */
     `.blk+.blk{margin-top:${gapMM()}mm}`+
     /* 자체 줄간격을 가진 곳은 본문 줄간격에 비례해 따라간다 */
     `.calc{line-height:${(lh*1.1875).toFixed(3)}}`+
@@ -1131,9 +1132,10 @@ function buildReport(){
     const o=first?OV[first.key]:null;
     const t=ovn(o,"여백상",M.t), bm=ovn(o,"여백하",M.b), pno=ovn(o,"쪽번호자리",pnoMM());
     const use=Math.max(30,297-t-bm-pno);
+    const gmm=ovn(o,"블록간격",gapMM());
     return {t,b:bm,full:use*MMPX,
             budget:Math.max(30,use-ovn(o,"여유",safeMM()))*MMPX,
-            gap:ovn(o,"블록간격",gapMM())*MMPX};
+            gap:gmm*MMPX, gapmm:gmm};
   };
   const pages=[];let cur=[],curH=0,curKey=null,curSet=budgetOf(null);
   const KEEP_MAX=45*MMPX;              // 다음 장으로 함께 넘길 제목류의 최대 높이
@@ -1184,7 +1186,7 @@ function buildReport(){
     const has=!!OV[fk], sel=S.selPageKey===fk;
     const pad=(st.t!==M.t||st.b!==M.b)?` style="padding-top:${st.t}mm;padding-bottom:${st.b}mm"`:"";
     h+=`<section class="page${over?" over":""}${has?" pgov":""}${sel?" pgsel":""}"${pad}>`
-      +groups.map((g,gi)=>`<div class="blk">`
+      +groups.map((g,gi)=>`<div class="blk"${gi>0?` style="margin-top:${st.gapmm}mm"`:""}>`
         +(gi===0?g.b.head:"")
         +g.items.map((it,ii)=>itemHtml(it,brk,gi===0&&ii===0)).join("")
         +`</div>`).join("")
@@ -1718,13 +1720,6 @@ function pageSetFieldset(){
    <div class="row">${F("위 여백 (mm)","pgs.여백상","number",'min="0" max="60" '+ph(M.t))}${F("아래 여백 (mm)","pgs.여백하","number",'min="0" max="60" '+ph(M.b))}</div>
    <div class="row">${F("쪽번호 자리 (mm)","pgs.쪽번호자리","number",'min="0" max="20" '+ph(pnoMM()))}${F("인쇄 오차 여유 (mm)","pgs.여유","number",'min="0" max="20" '+ph(safeMM()))}</div>
    ${F("블록 간격 (mm)","pgs.블록간격","number",'min="0" max="30" '+ph(gapMM()))}
-   <p class="hint">블록 간격은 <b>이 장에 블록이 둘 이상 있을 때만</b> 듣습니다.
-    한 블록이 장을 통째로 쓰고 있으면 값을 바꿔도 지면이 달라지지 않습니다 — 그럴 때는
-    위·아래 여백이나 문서 전체 설정의 <b>표 칸 여백</b>을 쓰세요.</p>
-   <p class="hint">비운 칸은 문서 기본값을 따릅니다. 좌·우 여백과 줄 간격·표 여백은 본문 폭과 줄 높이를
-    바꿔 버려서 여기에 없습니다 — 그건 문서 전체 설정에서만 바꿉니다.</p>
-   <p class="hint">이 설정은 장 번호가 아니라 <b>이 줄</b>에 붙어 있습니다. 위쪽에서 내용이 늘어 장이 밀려도
-    이 줄이 여는 장을 계속 따라갑니다.</p>
    <div style="display:flex;gap:6px">
     <button class="mini" data-act="pgclr">이 페이지 설정 지우기</button>
     <button class="mini" data-act="pgnone">선택 해제</button>
@@ -1755,20 +1750,6 @@ function renderDocPane(){
     <div class="row">${F("쪽번호 자리 (mm)","doc.쪽번호자리","number",'min="0" max="20" step="1"')}${F("인쇄 오차 여유 (mm)","doc.여유","number",'min="0" max="20" step="1"')}</div>
     <div class="row">${F("블록 간격 (mm)","doc.블록간격","number",'min="0" max="30" step="1"')}${F("표 칸 여백 (px)","doc.표여백","number",'min="0" max="8" step="1"')}</div>
     ${F("본문 줄 간격","doc.줄간격","number",'min="1.2" max="2.2" step="0.05"')}
-    <p class="hint">매 장에서 <b>${pnoMM()+safeMM()}mm</b> 를 본문에 앞서 떼어 둡니다 — 쪽번호 자리와 인쇄 오차 여유입니다.
-     한 줄 차이로 장이 갈릴 때 여기를 1~2mm 줄이면 대개 들어갑니다.
-     <b>인쇄 오차 여유</b>를 0 으로 두면 화면에서 잰 값과 인쇄가 1mm 어긋나 마지막 줄이 잘릴 수 있으니 2mm 아래로는 권하지 않습니다.
-     <b>쪽번호 자리</b>를 0 으로 두면 쪽번호가 마지막 줄과 겹칩니다.</p>
-    <p class="hint"><b>블록 간격</b>은 <b>한 장 안에서 서로 다른 블록이 이어질 때만</b> 들어갑니다.
-     블록은 계산서를 짜는 한 덩어리로, 표지 · 개요 · 용어정의 · 계산식 · 4.1 물질목록 · 4.2 누출원목록,
-     그리고 설비마다 ①물질특성·환기조건 / ②누출구멍 / ③누출률 / ④배경농도 / ⑤누출특성·희석등급 /
-     ⑥범위 / ⑦종별판정 이 각각 하나씩입니다.</p>
-    <p class="hint">그래서 <b>한 장에 블록이 하나뿐이면 아무리 바꿔도 달라지지 않습니다</b> —
-     이 계산서는 설비별 블록이 커서 한 장을 통째로 쓰는 장이 많습니다.
-     블록이 <i>n</i> 개 들어간 장에서만 (<i>n</i>−1) × 간격만큼 듣고, 장의 첫 블록 위에는 붙지 않습니다.
-     한 장에 여러 블록이 모인 장(표지 뒤 서두 쪽)에서 효과가 큽니다.</p>
-    <p class="hint"><b>표 칸 여백</b>은 표가 많은 이 계산서에서 가장 크게 듣는 손잡이입니다 —
-     1px 만 줄여도 행이 20개인 표에서 10mm 넘게 줄어듭니다.</p>
     <div style="display:flex;gap:6px">
       <button class="mini" data-act="lay" data-v="9,4,6,3,1.6">기본값</button>
       <button class="mini" data-act="lay" data-v="7,2,4,2,1.45">한 장에 더 넣기</button>
@@ -1782,11 +1763,6 @@ function renderDocPane(){
       <button class="mini" data-act="clrspc">줄 여백 해제</button>
       <span style="font-size:11px;color:var(--ink-3)">나눔 ${(S.doc.breaks||[]).length} · 여백조정 ${Object.keys(S.doc.spacers||{}).length}</span>
     </div>
-    <p class="hint" style="margin-top:8px">미리보기에서 줄 위에 마우스를 올리면 오른쪽 여백에 단추 셋이 나타납니다.
-     <b>✂</b> 는 그 줄부터 새 페이지에서 시작하고(주황 점선 표시),
-     <b>↓</b> 는 그 줄 위를 ${SPACE_MM}mm 씩 띄우고 <b>↑</b> 는 ${SPACE_MM}mm 씩 <b>당깁니다</b>.
-     당기기가 있어서 "몇 mm 만 줄이면 한 줄이 더 들어가는데" 하는 경우를 그 자리에서 해결할 수 있습니다.
-     범위는 ${SPACE_MIN*SPACE_MM}mm ~ +${SPACE_MAX*SPACE_MM}mm 입니다.</p>
   </fieldset>
   <div class="readout"><h4>출력 순서</h4>
    <div style="font-size:11.5px;line-height:1.9;color:var(--ink-2)">
