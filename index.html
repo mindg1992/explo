@@ -397,6 +397,7 @@ function newSrc(n){
     이용도:"미흡",이용도직접:"",이용도적용:"미흡",
     환기형태:"auto",
     누출형태:"무거운가스",
+    배경평가:"미고려",배경근거:"",배경Qa:"",배경f:1,배경V0:"",
     희석모드:"auto",희석수동:"중희석",희석근거:"설비특성상",
     범위모드:"auto",범위수동:"",수평:"",수직:"",
     추정문구:"",
@@ -408,6 +409,9 @@ function fillSrcDefaults(s){
   if(!s)return;
   if(s.Wg직접==null)s.Wg직접="";
   if(s.환기형태==null)s.환기형태="auto";
+  /* 배경농도 평가는 나중에 들어왔다. 예전 파일은 모두 제로 배경농도로 계산돼 있었으므로
+     "미고려"로 채워 두면 지금까지 뽑아 둔 계산서와 결과가 같다. */
+  if(s.배경평가==null){s.배경평가="미고려";s.배경근거="";s.배경Qa="";s.배경f=1;s.배경V0=""}
   if(s.추정문구==null)s.추정문구="";
   if(s.Fv==null)s.Fv="";
   if(s.PopUnit==null){
@@ -589,10 +593,32 @@ function calcSrc(s,m){
     if(!r.msg.length)r.msg.push("입력값이 부족하여 계산할 수 없습니다.");
   }
   if(r.dPneg)r.msg.push("운전압력이 대기압보다 낮아(부압) 액주를 더해도 개구부 안쪽 압력이 대기압에 못 미칩니다. 액체가 유출되는 대신 외기가 유입되는 조건이므로 <b>이 개구부는 액체 누출원이 아니며 W = 0</b> 입니다. 누출점 위치와 액면높이 h 를 다시 확인하세요.");
+  /* 배경농도 평가 — 부속서 D 2.6.2 (식 1) Xb = f·Qg/Qa.
+     옥내(밀폐공간)는 차트를 보기 전에 이 값을 임계농도(LFL의 25 %, 부속서 C 3(3)(가))와
+     먼저 견준다. 넘으면 <그림 1> 은 제로 배경농도 기반이라 쓸 수 없고(부속서 D 4(3)),
+     희석등급은 바로 저희석이 된다(부속서 D 2.5(4)). */
+  r.Xcrit = 0.25*LFLp;
+  r.배경 = s.배경평가==="고려";
+  if(r.배경){
+    const Qa=+s.배경Qa, f=(+s.배경f>0)?+s.배경f:1, V0=+s.배경V0;
+    r.Qa=Qa; r.f=f;
+    r.배경ok = r.done && isFinite(Qa) && Qa>0;
+    if(r.배경ok){
+      r.Xb = f*SIG(r.Qg,3)/Qa;
+      r.Xb초과 = r.Xb>r.Xcrit;
+      if(isFinite(V0)&&V0>0){r.V0=V0; r.C교환=Qa/V0}
+    }else if(r.done){
+      r.msg.push("배경농도를 고려하는 조건으로 두었으나 <b>공기 유량 Q<sub>a</sub></b> 가 없어 배경농도를 계산하지 못했습니다.");
+    }
+  }else if(s.위치==="옥내"){
+    r.msg.push("옥내인데 배경농도를 고려하지 않는 조건으로 두었다. 지침 부속서 D 2.6.1 (3)(다)는 제로 배경농도를 옥외 또는 누출원 주변에 국소배기장치가 있는 곳에서만 인정하므로, 해당 근거가 맞는지 확인해야 한다.");
+  }
   r.bHi = DIL_HI.a*Math.pow(r.C,DIL_HI.b);
   r.bLo = DIL_LO.a*Math.pow(r.C,DIL_LO.b);
   r.희석auto = r.done ? (uw>=r.bHi ? "고희석" : (uw<=r.bLo ? "저희석" : "중희석")) : "-";
-  r.희석 = s.희석모드==="auto" ? r.희석auto : s.희석수동;
+  /* 배경농도가 임계농도를 넘으면 차트 판독보다 이쪽이 앞선다 */
+  r.희석배경 = (r.배경 && r.배경ok && r.Xb초과) ? "저희석" : null;
+  r.희석 = s.희석모드==="auto" ? (r.희석배경||r.희석auto) : s.희석수동;
   // 종별
   r.이용도 = s.이용도==="직접입력" ? s.이용도적용 : s.이용도;
   r.cell = (r.희석==="-") ? "-" : zoneCell(s.등급, r.희석, r.이용도);
@@ -936,12 +962,15 @@ const EQ={
  nonchoked:`<span class="fm"><i>W<sub>g</sub></i> = <i>C<sub>d</sub>SP</i>${SQ(`<span class="frac"><span><i>M</i></span><span class="den"><i>ZRT</i></span></span><span class="frac"><span>2<i>γ</i></span><span class="den"><i>γ</i>−1</span></span>[1−(<span class="frac"><span><i>P<sub>a</sub></i></span><span class="den"><i>P</i></span></span>)<sup>(<i>γ</i>−1)/<i>γ</i></sup>]`)}(<span class="frac"><span><i>P<sub>a</sub></i></span><span class="den"><i>P</i></span></span>)<sup>1/<i>γ</i></sup></span>`,
  choked:`<span class="fm"><i>W<sub>g</sub></i> = <i>C<sub>d</sub>SP</i>${SQ(`<i>γ</i><span class="frac"><span><i>M</i></span><span class="den"><i>ZRT</i></span></span>[<span class="frac"><span>2</span><span class="den"><i>γ</i>+1</span></span>]<sup>(<i>γ</i>+1)/(<i>γ</i>−1)</sup>`)}</span>`,
  char:`<span class="fm">누출특성 = <span class="frac"><span><i>W<sub>g</sub></i></span><span class="den"><i>ρ<sub>g</sub></i> × <i>k</i> × LFL</span></span> = <span class="frac"><span><i>Q<sub>g</sub></i></span><span class="den"><i>k</i> × LFL</span></span></span>`,
+ xb:`<span class="fm"><i>X<sub>b</sub></i> = <i>f</i> × <span class="frac"><span><i>Q<sub>g</sub></i></span><span class="den"><i>Q<sub>a</sub></i></span></span> (vol/vol)</span>`,
+ xcrit:`<span class="fm"><i>X<sub>crit</sub></i> = 0.25 × LFL</span>`,
  ap:`<span class="fm"><i>A<sub>p</sub></i> = <span class="frac"><span><i>V</i><sub>누출</sub></span><span class="den">0.01 m</span></span> , <i>V</i><sub>누출</sub> = <span class="frac"><span><i>W</i> × <i>t</i></span><span class="den"><i>ρ</i></span></span> , <i>W</i> = <i>C<sub>d</sub>S</i>${SQ(`2<i>ρ</i>Δ<i>P</i>`)}</span>`
 };
 const DEF={
  liq:`<div class="dl"><b><i>W</i></b> : 액체의 누출율 (kg/s)</div><div class="dl"><b><i>C<sub>d</sub></i></b> : 누출계수 (단위 없음), 일반적으로 모난 오리피스는 0.5~0.75</div><div class="dl"><b><i>S</i></b> : 유체가 누출되는 개구부(구멍)의 단면적 (m²)</div><div class="dl"><b><i>ρ</i></b> : 액체 밀도 (kg/m³)</div><div class="dl"><b>Δ<i>P</i></b> : 개구부에서의 누설 압력 차 (Pa)</div>`,
  pool:`<div class="dl"><b><i>Q<sub>g</sub></i></b> : 부피증발률 (m³/s)</div><div class="dl"><b><i>u<sub>w</sub></i></b> : 풀 표면 풍속 (m/s)</div><div class="dl"><b><i>A<sub>p</sub></i></b> : 풀 표면적 (m²)</div><div class="dl"><b><i>P<sub>v</sub></i></b> : 액체 증기압 (kPa)</div><div class="dl"><b><i>M</i></b> : 몰질량 (kg/kmol)</div><div class="dl"><b><i>R</i></b> : 기체상수 (8314 J/kmol·K)</div><div class="dl"><b><i>T<sub>a</sub></i></b> : 주위온도 (K)</div><div class="dl"><b><i>T</i></b> : 유체온도 (K)</div>`,
  gas:`<div class="dl"><b><i>W<sub>g</sub></i></b> : 가스누출률 (kg/s)</div><div class="dl"><b><i>C<sub>d</sub></i></b> : 누출계수(단위없음), 일반적으로 모난 오리피스는 0.5~0.75</div><div class="dl"><b><i>M</i></b> : 가스 또는 증기의 몰 질량 (kg/kmol)</div><div class="dl"><b><i>γ</i></b> : 단열 팽창 폴리트로픽 지수(단위없음)</div><div class="dl"><b><i>P</i></b> : 용기 내부의 압력 (Pa)</div><div class="dl"><b><i>P<sub>a</sub></i></b> : 대기압 (101,325 Pa)</div><div class="dl"><b><i>R</i></b> : 이상기체상수 (8314 J/kmol·K)</div><div class="dl"><b><i>S</i></b> : 유체가 누출되는 개구부(구멍)의 단면적 (m²)</div><div class="dl"><b><i>T</i></b> : 유체, 기체 또는 액체의 절대온도 (K)</div><div class="dl"><b><i>Z</i></b> : 압축인자(단위없음)</div>`,
+ xb:`<div class="dl">여기서, <b><i>X<sub>b</sub></i></b> : 배경농도 (vol/vol)</div><div class="dl"><b><i>f</i></b> : 환기효율계수(단위없음), 실내의 평균 배경농도를 배기구측 농도로 나눈 값</div><div class="dl"><b><i>Q<sub>g</sub></i></b> : 누출원으로부터 누출되는 인화성 가스의 체적 유량 (m³/s)</div><div class="dl"><b><i>Q<sub>a</sub></i></b> : 공기의 체적 유량 (m³/s)</div><div class="dl"><b><i>X<sub>crit</sub></i></b> : 임계농도 (vol/vol), 일반적으로 LFL의 25 %</div>`,
  char:`<div class="dl">여기서, <b><i>W<sub>g</sub></i></b> : 가스 누출율 (kg/s)</div><div class="dl"><b><i>Q<sub>g</sub></i></b> : 부피 증발율 (m³/s)</div><div class="dl"><b><i>ρ<sub>g</sub></i></b> : 가스 또는 증기 밀도 (kg/m³)</div><div class="dl"><b><i>k</i></b> : LFL의 안전계수</div><div class="dl"><b>LFL</b> : 폭발 하한계 (vol/vol)</div>`
 };
 </script>
@@ -1247,6 +1276,70 @@ function part2Table(){
   return h+`</table>`;
 }
 
+/* 배경농도를 고려하는 조건인지 아닌지에 대한 근거.
+   비워 두면 고른 조건에 맞는 지침 문구를 자동으로 싣고, 적어 두면 적은 그대로 싣는다.
+   국소배기장치 번호처럼 현장마다 다른 근거를 달아야 할 때가 있어 열어 둔다. */
+function bgAuto(s){
+  if(s.배경평가==="고려")
+    return "옥내(밀폐공간)의 희석등급은 인화성 물질의 평균 배경농도 평가에 의하여 평가한다"
+         + "(지침 부속서 D 2.5 (4) 및 2.6.1 (3)). 배경농도와 비교되는 임계농도는 일반적으로 "
+         + "LFL 의 25 % 로 한다(부속서 C 3 (3)(가)).";
+  return "제로 배경농도는 옥외 또는 누출원 주변에 인화성 물질의 이동을 제어하는 국소배기장치가 "
+       + "있는 곳에서만 고려한다(지침 부속서 D 2.6.1 (3)(다))."
+       + (s.위치==="옥외"
+          ? " 본 누출원은 옥외에 설치되어 제로 배경농도 조건에 해당하므로 배경농도를 고려하지 않는다."
+          : " 본 누출원은 누출원 주변 국소배기장치로 인화성 물질의 이동이 제어되므로 제로 배경농도로 보고 배경농도를 고려하지 않는다.");
+}
+function bgText(s){
+  const t=String(s.배경근거==null?"":s.배경근거).trim();
+  return t||bgAuto(s);
+}
+function bgHint(s){
+  return "계산서의 배경농도 항목에 근거로 실립니다. "
+   + (String(s.배경근거||"").trim()
+      ? "직접 고친 문구라 조건을 바꿔도 그대로 남습니다."
+      : "아직 고치지 않아 고른 조건에 맞춰 계속 갱신됩니다.");
+}
+/* 농도는 vol/vol 로 계산하고, 읽기 쉽도록 vol% 를 괄호에 함께 적는다 */
+function volTxt(x){return isFinite(x)?`${num(x,3)} vol/vol (${num(x*100,3)} vol%)`:"-"}
+/* 계산서의 배경농도 블록. 고려하지 않는 조건이어도 그 근거는 남긴다. */
+function bgBlock(s,m,r,cn){
+  const 임계=`<i>X<sub>crit</sub></i> = 0.25 × ${trim((+m.LFL/100).toFixed(5))} = <span class="res">${volTxt(r.Xcrit)}</span>`;
+  if(!r.배경){
+    return `<p class="item">${cn} 배경농도 : <span class="orange">고려하지 않음(제로 배경농도)</span></p>
+     <p class="ind" style="font-size:9.5pt">근거 : ${esc(bgText(s))}</p>
+     <p class="ind" style="font-size:9.5pt">따라서 희석등급은 제로 배경농도를 바탕으로 작성된 희석등급 평가차트(지침 부속서 D &lt;그림 1&gt;)로 판정한다.</p>`;
+  }
+  if(!r.배경ok){
+    return `<p class="item">${cn} 배경농도 : <span class="orange">-</span></p>
+     <p class="ind" style="font-size:9.5pt">근거 : ${esc(bgText(s))}</p>
+     <p class="ind" style="font-size:9.5pt">공기 유량 <i>Q<sub>a</sub></i> 를 입력하면 배경농도가 계산됩니다.</p>`;
+  }
+  const 초과=r.Xb초과;
+  return `<p class="item">${cn} 배경농도 <i>X<sub>b</sub></i> = <span class="orange">${volTxt(r.Xb)}</span></p>
+   <p class="ind" style="font-size:9.5pt">근거 : ${esc(bgText(s))}</p>
+   <p class="ind">⑴ 계산식</p>${EQ.xb}${DEF.xb}
+   <p class="ind">⑵ 단계별 계산</p>
+   <div class="calc">가. <i>Q<sub>a</sub></i> = ${num(r.Qa,4)} m³/s (= ${num(r.Qa*3600,4)} m³/h)${r.V0?`, 대상체적 <i>V<sub>0</sub></i> = ${num(r.V0,4)} m³ → 공기교체주기 <i>C</i> = ${sci(r.C교환,3)} s⁻¹`:""}<br>
+   &nbsp;&nbsp;&nbsp;&nbsp;<i>f</i> = ${r.f} (${esc(fTxt(r.f))})<br>
+   &nbsp;&nbsp;&nbsp;&nbsp;<i>Q<sub>g</sub></i> = ${sci(r.Qg,3)} m³/s<br>
+   <span class="arrow">→ <i>X<sub>b</sub></i> = ${r.f} × ${sci(r.Qg,3)} / ${num(r.Qa,4)} = <span class="res">${volTxt(r.Xb)}</span></span></div>
+   <p class="ind">⑶ 임계농도와의 비교</p>
+   <div class="calc">가. ${임계}<br>
+   <span class="arrow">→ <i>X<sub>b</sub></i> ${초과?"&gt;":"≤"} <i>X<sub>crit</sub></i> 이므로 <span class="res">${초과?"희석등급 = 저희석":"희석등급 평가차트 적용 가능"}</span></span></div>
+   <p class="ind2" style="font-size:9.5pt">${초과
+     ? "밀폐공간에서의 배경농도가 임계농도보다 높으므로 희석등급은 <b>저희석</b>이며, 제로 배경농도를 바탕으로 작성된 희석등급 평가차트(지침 부속서 D &lt;그림 1&gt;)를 이용한 평가절차는 필요하지 않다(부속서 D 4 (3)). 아래 차트는 평가를 확인하기 위한 참고자료이다."
+     : "배경농도가 임계농도를 넘지 않으므로 희석등급은 희석등급 평가차트(지침 부속서 D &lt;그림 1&gt;)로 판정한다."}</p>`;
+}
+/* 환기효율계수 f 는 값마다 뜻이 정해져 있다(부속서 D 2.6.2 (2)(가)③) */
+function fTxt(f){
+  f=+f;
+  if(f<=1)return "배경농도가 기본적으로 균일하고 배출구 농도가 평균 배경농도를 반영";
+  if(f<=1.5)return "일부 비균질한 혼합";
+  if(f<5)return "비균질한 혼합";
+  return "많이 비균질한 혼합";
+}
+
 /* ※ 폭발위험지역의 추정 — 마지막 요약표 오른쪽 칸의 문구.
    비워 두면 계산 결과로 자동 작성하고, 입력해 두면 적은 그대로 싣는다.
    설비마다 현장 사정(구획·방류벽·인접설비 등)을 덧붙여야 할 때가 있어서 직접 쓸 수 있게 열어 둔다. */
@@ -1310,10 +1403,15 @@ function srcPages(s,idx){
        : r.mode==="flash" ?flashCalc(s,m,r,N())
        : r.mode==="given" ?givenCalc(s,m,r,N())
        :                   gasCalc(s,m,r,N())}`,K("c"));
+  /* 블록 C-2 : 배경농도. 순서도(부속서 A <그림 4>)가 옥내는 희석등급 결정 앞에
+     배경농도 평가를 두므로 누출률 다음, 희석등급 앞에 놓는다. */
+  page(bgBlock(s,m,r,N()),K("cb"));
   /* 블록 D : 누출특성 + 희석등급 */
-  const dilTxt = s.희석모드==="auto"
-    ? `희석등급 평가차트에 따라 <span class="orange">${r.희석}</span>으로 판단함.`
-    : `희석등급 평가차트에 따라 ${r.희석auto}이지만, ${esc(s.희석근거||"설비특성상")} <span class="orange">${s.희석수동}</span>으로 판단함.`;
+  const dilTxt = s.희석모드!=="auto"
+    ? `희석등급 평가차트에 따라 ${r.희석auto}이지만, ${esc(s.희석근거||"설비특성상")} <span class="orange">${s.희석수동}</span>으로 판단함.`
+    : r.희석배경
+      ? `배경농도가 임계농도를 넘으므로 희석등급은 <span class="orange">저희석</span>이다.`
+      : `희석등급 평가차트에 따라 <span class="orange">${r.희석}</span>으로 판단함.`;
   page(`<p class="item">${N()} 누출 특성 = <span class="orange">${num(r.C,2)} m³/s</span></p>
    <p class="ind">⑴ 계산식</p>${EQ.char}${DEF.char}
    <p class="ind">⑵ 단계별 계산</p>
@@ -1784,6 +1882,23 @@ function renderSrcPane(){
     현재 표기 : <b>${ventCode(s)}</b></p>
    ${Sel("환기이용도","src.이용도",["우수","양호","미흡","직접입력"])}
    ${s.이용도==="직접입력"?`${F("표기할 문구","src.이용도직접")}${Sel("판정표 적용 등급","src.이용도적용",["우수","양호","미흡"])}`:""}
+   <label class="f"><span>배경농도 <em>(부속서 D 2.6.1 (3)(다))</em></span><select data-path="src.배경평가" data-live="1">
+    <option value="미고려" ${s.배경평가!=="고려"?"selected":""}>고려하지 않음 — 제로 배경농도(옥외 · 국소배기)</option>
+    <option value="고려" ${s.배경평가==="고려"?"selected":""}>고려함 — 배경농도 평가(옥내 · 밀폐공간)</option></select></label>
+   ${s.배경평가==="고려"?`
+     <div class="row">${F("공기 유량 Q<sub>a</sub> (m³/s)","src.배경Qa","number",'placeholder="예) 0.085"')}${F("환기효율계수 f","src.배경f","number")}</div>
+     ${F("대상체적 V<sub>0</sub> (m³)","src.배경V0","number",'placeholder="비워도 됩니다(공기교체주기 표기용)"')}
+     <p class="hint">f 는 실내 평균 배경농도를 배기구측 농도로 나눈 값입니다 — <b>1</b>(균일), <b>1.5</b>(일부 비균질), <b>5</b>(많이 비균질).
+      Q<sub>a</sub> 는 초당 값입니다. ${(+s.배경Qa>0)?`입력값 ${num(+s.배경Qa,4)} m³/s = <b>${num(+s.배경Qa*3600,4)} m³/h</b>.`:"m³/h 로 알고 있다면 3600 으로 나눠 넣으세요."}</p>
+     <p class="hint">${r.배경ok
+        ? `X<sub>b</sub> = <b>${volTxt(r.Xb)}</b>, 임계농도 = <b>${volTxt(r.Xcrit)}</b> (LFL의 25 %) → ${r.Xb초과
+            ? `<b style="color:var(--red)">임계농도 초과 → 희석등급 저희석 확정</b> (차트 판독 불필요)`
+            : `임계농도 이하 → 차트로 희석등급 판정`}`
+        : `공기 유량 Q<sub>a</sub> 를 입력하면 배경농도를 계산합니다. 임계농도 = <b>${volTxt(r.Xcrit)}</b> (LFL의 25 %).`}</p>`:""}
+   <label class="f"><span>배경농도 판단근거 <em>(자동 작성된 문장을 고쳐 쓰세요)</em></span><textarea
+    data-path="src.배경근거" data-auto="1" rows="3">${esc(s.배경근거||bgAuto(s))}</textarea></label>
+   <div style="margin-top:6px"><button class="mini" data-act="bgclr">자동문구로 되돌리기</button></div>
+   <p class="hint" id="bgHint">${bgHint(s)}</p>
    ${Sel("희석등급 판정","src.희석모드",["auto","manual"]).replace(">auto<",">차트 자동판정<").replace(">manual<",">수동 지정<")}
    ${s.희석모드==="manual"?`${Sel("적용 희석등급","src.희석수동",["고희석","중희석","저희석"])}${F("사유(예: 설비특성상)","src.희석근거")}`:""}
   </fieldset>`;
@@ -1847,9 +1962,12 @@ function syncSide(){
   }
   /* 아직 직접 손대지 않은 추정문구는 계산이 바뀌면 따라 바뀐다.
      지금 그 칸에 커서가 있으면 쓰던 글이 지워지므로 건드리지 않는다. */
-  const et=$("#pane-src textarea[data-auto]");
+  const et=$('#pane-src textarea[data-path="src.추정문구"]');
   if(et&&!String(s.추정문구||"").trim()&&document.activeElement!==et)et.value=estAuto(s,r);
   const eh=$("#estHint"); if(eh)eh.textContent=estHint(s);
+  const bt=$('#pane-src textarea[data-path="src.배경근거"]');
+  if(bt&&!String(s.배경근거||"").trim()&&document.activeElement!==bt)bt.value=bgAuto(s);
+  const bh=$("#bgHint"); if(bh)bh.textContent=bgHint(s);
   const box=$("#pane-src .readout");
   if(box){const tmp=document.createElement("div");
     tmp.innerHTML=`<div class="readout">${box.innerHTML}</div>`;}
@@ -1926,6 +2044,7 @@ document.addEventListener("click",e=>{
     case"k":s.k=+v;s.k근거=K_ROWS.find(r=>+r[2]===+v)[1];renderSrcPane();renderReport();break;
     case"tsel":s.t=+v;renderSrcPane();renderReport();break;
     case"estclr":s.추정문구="";renderSrcPane();renderReport();break;
+    case"bgclr":s.배경근거="";renderSrcPane();renderReport();break;
     case"uw":s.uw=+v;s.uwcell=b.dataset.cell||"";s.uw옥내=!b.dataset.cell;
       s.uw근거 = (+v===0.05)?"옥내의 경우 최소 공기속도 0.05 m/s 가정(<표 1> 비고)":"<표 1> 옥외 환기속도 적용";
       renderSrcPane();renderReport();break;
