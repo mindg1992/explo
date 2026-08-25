@@ -669,8 +669,8 @@ function calcSrc(s,m){
   r.수직 = (String(s.수직).trim()==="")?r.범위:(+s.수직);
   if(r.NE) r.msg.push("판정 결과가 NE(무시할 수 있는 범위)이므로 지침 &lt;부록 3&gt; &lt;그림 1&gt; 비고에 따라 범위 그래프로 거리를 산정하지 않는다.");
   if(s.위치==="옥내"&&r.희석==="저희석") r.msg.push(r.희석배경
-    ? "옥내·저희석(배경농도&gt;임계농도) 조건이므로, 지침 &lt;부록 3&gt; 1.2 (3) 및 &lt;부록 2&gt; 3.3 (4)에 따라 공간 전체를 하나의 폭발위험장소로 구분한다."
-    : "옥내·저희석 조건이다. 지침 &lt;부록 3&gt; 1.2 (3) 및 &lt;부록 2&gt; 3.3 (4)에 따라 밀폐공간 전체를 하나의 폭발위험장소로 구분하고 개구부를 별도 누출원으로 검토해야 한다.");
+    ? "옥내·저희석(배경농도&gt;임계농도) 조건이므로 범위 추정 그래프는 적용하지 않으며(지침 &lt;부록 3&gt; 1.2 (3)), 저희석에서는 누출원의 수와 관계없이 밀폐공간을 하나의 영역으로 구분하는 것이 일반적이므로(&lt;부록 2&gt; 3.3 (4)) 공간 전체를 하나의 폭발위험장소로 구분한다."
+    : "옥내·저희석 조건이므로 범위 추정 그래프는 적용하지 않으며(지침 &lt;부록 3&gt; 1.2 (3)), 저희석에서는 누출원의 수와 관계없이 밀폐공간을 하나의 영역으로 구분하는 것이 일반적이다(&lt;부록 2&gt; 3.3 (4)).");
   return r;
 }
 const ZONE_TBL={
@@ -1360,13 +1360,10 @@ function bgBlock(s,m,r,cn){
    <p class="ind" style="font-size:9.5pt">근거 : ${esc(bgText(s))}</p>
    <p class="ind">⑴ 계산식</p>${EQ.xb}${DEF.xb}
    <p class="ind">⑵ 단계별 계산</p>
-   <div class="calc">가. <i>Q<sub>a</sub></i> = ${num(r.Qa,4)} m³/s (= ${num(r.Qa*3600,4)} m³/h)${
-     r.Qa역산!=null?` — 환기속도에서 역산 : <i>Q<sub>a</sub></i> = <i>u<sub>w</sub></i> × <i>L</i> × <i>B</i> = ${num(r.uw,3)} × ${num(+s.배경L,4)} × ${num(+s.배경B,4)} = ${num(r.Qa,4)} m³/s`:""
-     }${r.V0?`, 대상체적 <i>V<sub>0</sub></i> = ${num(r.V0,4)} m³ → 공기교체주기 <i>C</i> = ${sci(r.C교환,3)} s⁻¹`:""}<br>
+   <div class="calc">가. <i>Q<sub>a</sub></i> = ${num(r.Qa,4)} m³/s (= ${num(r.Qa*3600,4)} m³/h)${r.V0?`, 대상체적 <i>V<sub>0</sub></i> = ${num(r.V0,4)} m³ → 공기교체주기 <i>C</i> = ${sci(r.C교환,3)} s⁻¹`:""}<br>
    &nbsp;&nbsp;&nbsp;&nbsp;<i>f</i> = ${r.f} (${esc(fTxt(r.f))})<br>
    &nbsp;&nbsp;&nbsp;&nbsp;<i>Q<sub>g</sub></i> = ${sci(r.Qg,3)} m³/s<br>
    <span class="arrow">→ <i>X<sub>b</sub></i> = ${r.f} × ${sci(r.Qg,3)} / ${num(r.Qa,4)} = <span class="res">${volTxt(r.Xb)}</span></span></div>
-   ${r.Qa역산!=null?`<p class="ind2" style="font-size:9.5pt">공기 유량은 ④ 에서 정한 환기속도 <i>u<sub>w</sub></i> = ${num(r.uw,3)} m/s 와 단면 ${num(r.단면,4)} m² 로 역산한 값이다${String(s.uw근거||"").trim()?` — 환기속도 근거 : ${esc(s.uw근거)}`:""}.</p>`:""}
    <p class="ind">⑶ 임계농도와의 비교</p>
    <div class="calc">가. ${임계}<br>
    <span class="arrow">→ <i>X<sub>b</sub></i> ${초과?"&gt;":"≤"} <i>X<sub>crit</sub></i> 이므로 <span class="res">${초과?"희석등급 = 저희석":"희석등급 평가차트 적용 가능"}</span></span></div>
