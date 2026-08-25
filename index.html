@@ -1670,7 +1670,7 @@ function liqCalc(s,m,r,cn){
   ${spill?`<p class="ind2" style="color:#1546a0;font-size:9.5pt">* 지침 : 용기에서 흘러나오는 액체는 즉시 1cm 깊이의 풀(Pool)로써 평평한 표면을 형성하고 대기 조건에서 증발된다고 가정.</p>
   ${EQ.ap}
   <div class="dl">여기서, <b><i>W</i></b> : 액체의 누출율 (kg/s)</div>
-  <div class="dl"><b><i>t</i></b> : 누출시간 (${s.t}s) — 가장 보수적인 누출시간을 적용함.${fn("t-time")}</div>
+  <div class="dl"><b><i>t</i></b> : 누출시간 (${s.t}s)${fn("t-time")}</div>
   <div class="dl"><b><i>C<sub>d</sub></i></b> : 누출계수 (단위 없음), 일반적으로 모난 오리피스는 0.5~0.75 (여기서는 ${s.Cd}로 가정)</div>
   <div class="dl"><b><i>S</i></b> : 유체가 누출되는 개구부(구멍)의 단면적 (m²)</div>
   <div class="dl"><b><i>ρ</i></b> : 액체 밀도 (kg/m³)</div>
