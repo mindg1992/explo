@@ -368,10 +368,11 @@ const NOTES={
   "bg-eval"  :"&lt;부록 2&gt; 2.5 (4) 및 2.6.1 (3)",
   "bg-crit"  :"&lt;부록 1&gt; 3 (3)(가)",
   "bg-zero"  :"&lt;부록 2&gt; 2.6.1 (3)(다)",
-  "dil-chart":"&lt;부록 2&gt; &lt;그림 1&gt; 희석등급 평가용 그래프",
+  "dil-chart":"&lt;부록 2&gt; &lt;그림 1&gt;",
   "dil-zero" :"&lt;부록 2&gt; 2.5 (1)",
   "bg-skip"  :"&lt;부록 3&gt; 2.2.1 (2) 비고",
-  "uw-area"  :"&lt;부록 3&gt; 2.2.1 (2) 및 2.2.2 (2) 계산 예시",
+  "uw-area"  :"&lt;부록 3&gt; 2.2.1 (2), 2.2.2 (2)",
+  "ext-chart":"&lt;부록 3&gt; &lt;그림 1&gt;",
   "ext-ne"   :"&lt;부록 3&gt; &lt;그림 1&gt; 비고",
   "ext-low"  :"&lt;부록 3&gt; 1.2 (3)",
   "low-one"  :"&lt;부록 2&gt; 3.3 (4)",
@@ -1294,12 +1295,12 @@ function collectBlocks(){
    <p class="ind2">② <b>중희석</b>(Medium Dilution) 누출이 진행되는 동안에는 누출농도를 안정된 상태로 제어할 수 있고, 누출이 중단된 후에는 더 이상 폭발성 가스분위기가 지속되지 않는다.</p>
    <p class="ind2">③ <b>저희석</b>(Low Dilution) 누출이 진행되는 동안에 상당한 농도로 지속되고 누출이 정지된 후에도 인화성 분위기가 상당기간 동안 지속된다.</p>`,"doc-2");
   /* 희석 그래프 + 환기이용도 + 범위 그래프 */
-  page(`<figure>${chartDilution(null)}</figure>
+  page(`<figure><figcaption>&lt;그림 1&gt; 희석등급 평가용 그래프${fn("dil-chart")}</figcaption>${chartDilution(null)}</figure>
    <p class="ind"><b>4) 환기이용도</b></p>
    <p class="ind2">우수 : 환기가 실제적으로 지속되는 상태</p>
    <p class="ind2">양호 : 환기의 정상작동이 지속됨이 예측되는 상태, 빈번하지 않는 단기간 중단은 허용된다.</p>
    <p class="ind2">미흡 : 환기가 양호 또는 우수 기준을 충족하지 않지만, 장기간 중단이 발생하는 것으로 예상되지 않는 상태</p>
-   <figure>${chartExtent(null)}</figure>`,"doc-3");
+   <figure><figcaption>&lt;그림 2&gt; 폭발위험장소의 범위(거리) 추정 그래프${fn("ext-chart")}</figcaption>${chartExtent(null)}</figure>`,"doc-3");
   /* 종별 표 + Temp class */
   page(`<p class="ind"><b>5) 폭발위험 장소의 종별의 추정</b></p>
    <p class="ind2">폭발위험장소의 구분은 폭발성 분위기의 생성빈도와 지속시간에 따라 다음과 같이 분류한다.</p>
