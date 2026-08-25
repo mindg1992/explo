@@ -1030,7 +1030,7 @@ function pageMargins(){return {t:mg("여백상",18),b:mg("여백하",14),l:mg("�
    이 값들에 걸리는 일이 많아 문서 설정으로 꺼냈다. */
 function lay(k,def,lo,hi){const v=+S.doc[k];return isFinite(v)?Math.max(lo,Math.min(hi,v)):def}
 function pnoMM(){return lay("쪽번호자리",9,0,20)}    // 쪽번호 자리 (본문 아래에서 떼어 둔다)
-function safeMM(){return lay("여유",4,0,20)}         // 측정 오차 흡수용. 0 이면 1mm 차이로 장이 갈린다
+function safeMM(){return lay("여유",4,0,20)}         // 인쇄 오차 흡수용. 0 이면 1mm 차이로 장이 갈린다
 function gapMM(){return lay("블록간격",6,0,30)}      // 한 장 안에서 블록 사이 간격
 function lineH(){return lay("줄간격",1.6,1.2,2.2)}
 function cellPad(){return Math.round(lay("표여백",3,0,8))}
@@ -1068,6 +1068,10 @@ function isKeep(el){
   if(el.classList&&(el.classList.contains("item")||el.classList.contains("fm")))return true;
   if(el.tagName==="P"&&el.children.length===1&&el.firstElementChild.tagName==="B"
      &&el.textContent.trim()===el.firstElementChild.textContent.trim())return true;
+  /* "⑴ 계산식", "⑵ 단계별 계산" 같은 리드인 줄. 바로 뒤에 오는 식이나 계산을 이끄는
+     제목이므로 혼자 장 끝에 남으면 안 된다 — 제목만 남고 내용이 다음 장으로 넘어간다.
+     <b> 로 감싼 리드인은 위에서 이미 걸리고, 여기서는 감싸지 않은 것을 받는다. */
+  if(el.tagName==="P"&&!el.children.length&&/^[⑴-⒇]\s/.test(el.textContent.trim()))return true;
   return false;
 }
 
@@ -1119,7 +1123,7 @@ function buildReport(){
   /* 2) 한 장에 들어가는 만큼 채워 넣는다.
      장마다 다른 지면을 쓸 수 있다. 그 설정은 장 번호가 아니라 **그 장의 첫 줄**에
      매달아 둔다 — 번호에 매달면 위쪽에서 한 줄만 늘어도 남의 장 설정이 되어 버린다.
-     여기서 바꿀 수 있는 값(위·아래 여백, 쪽번호 자리, 측정 여유, 블록 간격)은
+     여기서 바꿀 수 있는 값(위·아래 여백, 쪽번호 자리, 인쇄 오차 여유, 블록 간격)은
      모두 본문 폭을 건드리지 않으므로, 이미 재 놓은 줄 높이를 그대로 쓸 수 있다. */
   const OV=S.doc.pageset||{}, M=pageMargins();
   const ovn=(o,k,def)=>{const v=o&&o[k];return (v!==""&&v!=null&&isFinite(+v))?+v:def};
@@ -1702,7 +1706,7 @@ function pageSetFieldset(){
   const k=S.selPageKey, ps=S.doc.pageset||{}, n=Object.keys(ps).length;
   if(!k)return `<fieldset><legend>페이지별 설정</legend>
    <p class="hint">미리보기에서 장 위에 마우스를 올리면 오른쪽 위 모서리에 <b>⚙</b> 가 나타납니다.
-    누르면 <b>그 장만</b> 위·아래 여백과 쪽번호 자리·측정 여유·블록 간격을 따로 줄 수 있습니다.
+    누르면 <b>그 장만</b> 위·아래 여백과 쪽번호 자리·인쇄 오차 여유·블록 간격을 따로 줄 수 있습니다.
     한 장만 빠듯할 때 문서 전체를 건드리지 않고 그 장만 조이는 용도입니다.</p>
    ${n?`<button class="mini" data-act="clrpg">페이지별 설정 모두 지우기 (${n}장)</button>`:""}</fieldset>`;
   const M=pageMargins(), pn=PGKEYS.indexOf(k)+1, live=pn>0;
@@ -1712,8 +1716,11 @@ function pageSetFieldset(){
      위쪽 내용이 바뀌면서 밀린 것이라 설정이 적용되지 않고 있습니다. 값은 그대로 두었으니,
      다시 그 줄이 장을 열게 되면 살아납니다.</p>`}
    <div class="row">${F("위 여백 (mm)","pgs.여백상","number",'min="0" max="60" '+ph(M.t))}${F("아래 여백 (mm)","pgs.여백하","number",'min="0" max="60" '+ph(M.b))}</div>
-   <div class="row">${F("쪽번호 자리 (mm)","pgs.쪽번호자리","number",'min="0" max="20" '+ph(pnoMM()))}${F("측정 여유 (mm)","pgs.여유","number",'min="0" max="20" '+ph(safeMM()))}</div>
+   <div class="row">${F("쪽번호 자리 (mm)","pgs.쪽번호자리","number",'min="0" max="20" '+ph(pnoMM()))}${F("인쇄 오차 여유 (mm)","pgs.여유","number",'min="0" max="20" '+ph(safeMM()))}</div>
    ${F("블록 간격 (mm)","pgs.블록간격","number",'min="0" max="30" '+ph(gapMM()))}
+   <p class="hint">블록 간격은 <b>이 장에 블록이 둘 이상 있을 때만</b> 듣습니다.
+    한 블록이 장을 통째로 쓰고 있으면 값을 바꿔도 지면이 달라지지 않습니다 — 그럴 때는
+    위·아래 여백이나 문서 전체 설정의 <b>표 칸 여백</b>을 쓰세요.</p>
    <p class="hint">비운 칸은 문서 기본값을 따릅니다. 좌·우 여백과 줄 간격·표 여백은 본문 폭과 줄 높이를
     바꿔 버려서 여기에 없습니다 — 그건 문서 전체 설정에서만 바꿉니다.</p>
    <p class="hint">이 설정은 장 번호가 아니라 <b>이 줄</b>에 붙어 있습니다. 위쪽에서 내용이 늘어 장이 밀려도
@@ -1745,13 +1752,21 @@ function renderDocPane(){
     </div>
   </fieldset>
   <fieldset><legend>지면 미세조정 <em>— 한 장에 들어가는 양</em></legend>
-    <div class="row">${F("쪽번호 자리 (mm)","doc.쪽번호자리","number",'min="0" max="20" step="1"')}${F("측정 여유 (mm)","doc.여유","number",'min="0" max="20" step="1"')}</div>
+    <div class="row">${F("쪽번호 자리 (mm)","doc.쪽번호자리","number",'min="0" max="20" step="1"')}${F("인쇄 오차 여유 (mm)","doc.여유","number",'min="0" max="20" step="1"')}</div>
     <div class="row">${F("블록 간격 (mm)","doc.블록간격","number",'min="0" max="30" step="1"')}${F("표 칸 여백 (px)","doc.표여백","number",'min="0" max="8" step="1"')}</div>
     ${F("본문 줄 간격","doc.줄간격","number",'min="1.2" max="2.2" step="0.05"')}
-    <p class="hint">매 장에서 <b>${pnoMM()+safeMM()}mm</b> 를 본문에 앞서 떼어 둡니다 — 쪽번호 자리와 측정 여유입니다.
+    <p class="hint">매 장에서 <b>${pnoMM()+safeMM()}mm</b> 를 본문에 앞서 떼어 둡니다 — 쪽번호 자리와 인쇄 오차 여유입니다.
      한 줄 차이로 장이 갈릴 때 여기를 1~2mm 줄이면 대개 들어갑니다.
-     <b>측정 여유</b>를 0 으로 두면 재는 값과 인쇄가 1mm 어긋나 마지막 줄이 잘릴 수 있으니 2mm 아래로는 권하지 않습니다.
+     <b>인쇄 오차 여유</b>를 0 으로 두면 화면에서 잰 값과 인쇄가 1mm 어긋나 마지막 줄이 잘릴 수 있으니 2mm 아래로는 권하지 않습니다.
      <b>쪽번호 자리</b>를 0 으로 두면 쪽번호가 마지막 줄과 겹칩니다.</p>
+    <p class="hint"><b>블록 간격</b>은 <b>한 장 안에서 서로 다른 블록이 이어질 때만</b> 들어갑니다.
+     블록은 계산서를 짜는 한 덩어리로, 표지 · 개요 · 용어정의 · 계산식 · 4.1 물질목록 · 4.2 누출원목록,
+     그리고 설비마다 ①물질특성·환기조건 / ②누출구멍 / ③누출률 / ④배경농도 / ⑤누출특성·희석등급 /
+     ⑥범위 / ⑦종별판정 이 각각 하나씩입니다.</p>
+    <p class="hint">그래서 <b>한 장에 블록이 하나뿐이면 아무리 바꿔도 달라지지 않습니다</b> —
+     이 계산서는 설비별 블록이 커서 한 장을 통째로 쓰는 장이 많습니다.
+     블록이 <i>n</i> 개 들어간 장에서만 (<i>n</i>−1) × 간격만큼 듣고, 장의 첫 블록 위에는 붙지 않습니다.
+     한 장에 여러 블록이 모인 장(표지 뒤 서두 쪽)에서 효과가 큽니다.</p>
     <p class="hint"><b>표 칸 여백</b>은 표가 많은 이 계산서에서 가장 크게 듣는 손잡이입니다 —
      1px 만 줄여도 행이 20개인 표에서 10mm 넘게 줄어듭니다.</p>
     <div style="display:flex;gap:6px">
