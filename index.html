@@ -1351,11 +1351,11 @@ function collectBlocks(){
    <h4 class="eq">액체의 누출률</h4>${EQ.liq}${DEF.liq}
    <h4 class="eq">증발 풀의 부피증발률</h4>${EQ.pool}${DEF.pool}
    <h4 class="eq">가스 또는 증기의 누출률</h4>
-   <p class="ind">가스 용기의 내부압력이 임계압력(Pc)보다 높다면, 누출가스의 속도는 음속(SONIC, CHOCKED)이다.</p>
+   <p class="ind">가스 용기의 내부압력이 임계압력(Pc)보다 높다면, 누출가스의 속도는 음속(SONIC, CHOKED)이다.</p>
    <p class="ind"><b>1) 임계압력</b></p>${EQ.pc}
    <div class="dl"><b><i>P<sub>C</sub></i></b> : 임계압력 (Pa)</div><div class="dl"><b><i>P<sub>a</sub></i></b> : 대기압 (101,325 Pa)</div><div class="dl"><b><i>γ</i></b> : 단열팽창 폴리트로픽 지수(단위없음)</div>`,"doc-5");
-  page(`<p class="ind"><b>2) 아음속누설(Non chocked)의 가스 누출률</b></p>${EQ.nonchoked}${DEF.gas}
-   <p class="ind"><b>3) 음속누설(Chocked)의 가스 누출량</b></p>${EQ.choked}${DEF.gas}`,"doc-6");
+  page(`<p class="ind"><b>2) 아음속누설(Non-choked)의 가스 누출률</b></p>${EQ.nonchoked}${DEF.gas}
+   <p class="ind"><b>3) 음속누설(Choked)의 가스 누출량</b></p>${EQ.choked}${DEF.gas}`,"doc-6");
   page(`<h4 class="eq">누출특성</h4>${EQ.char}${DEF.char}
    <h2 class="sec" style="margin-top:18px">3. 폭발장소의 구분</h2>
    <figure>${zoneHatchSvg()}</figure>`,"doc-7");
@@ -1706,7 +1706,7 @@ function gasCalc(s,m,r,cn){
       : `${esc(popLabel(s))} = ${Math.round(r.Pg).toLocaleString()} Pa(gauge) + 101,325 Pa = <span class="res">${Math.round(r.Pabs).toLocaleString()} Pa(abs)</span>`)}</div>
   <p class="ind">⑵ 임계압력 판정</p>${EQ.pc}
   <div class="calc"><i>P<sub>C</sub></i> = 101,325 × [(${m.gamma}+1)/2]<sup>${m.gamma}/(${m.gamma}−1)</sup> = <span class="res">${Math.round(r.Pc).toLocaleString()} Pa</span><br>
-  용기 내부압력 <i>P</i> = ${Math.round(r.P).toLocaleString()} Pa ${r.choked?"≥":"&lt;"} <i>P<sub>C</sub></i> → <span class="res">${r.choked?"음속누설(Chocked)":"아음속누설(Non chocked)"}</span></div>
+  용기 내부압력 <i>P</i> = ${Math.round(r.P).toLocaleString()} Pa ${r.choked?"≥":"&lt;"} <i>P<sub>C</sub></i> → <span class="res">${r.choked?"음속누설(Choked)":"아음속누설(Non-choked)"}</span></div>
   <p class="ind">⑶ 가스 누출률</p>${r.choked?EQ.choked:EQ.nonchoked}${DEF.gas}
   <div class="calc">∴ <i>W<sub>g</sub></i> = ${s.Cd} × ${S6} × ${Math.round(r.P).toLocaleString()} × √(…) = <span class="res">${num(r.Wg,3)} kg/s</span>
   &nbsp;<span style="font-size:8.5pt">(M=${m.M}, γ=${m.gamma}, T=${s.T_gas}K, Z=${r.Z}, R=8314)</span></div>
